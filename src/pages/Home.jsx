@@ -22,6 +22,7 @@ const FILTER_KEY = 'lrr_filter';
 const PRESETS_KEY = 'lrr_filter_presets';
 const RANDOMS_RECENT_KEY = 'lrr_random_recent_v1';
 const RANDOMS_BATCH_SIZE = 8;
+const RANDOMS_FILL_MAX_ITEMS = 24;
 const RANDOMS_FETCH_ATTEMPTS = 3;
 const RANDOMS_RECENT_LIMIT = 48;
 const RANDOMS_REQUEST_TIMEOUT_MS = 6500;
@@ -386,6 +387,7 @@ export default function Home({ onSelectArchive, onLogout }) {
   const pendingArchivesScrollRef = useRef(false);
   const archivesRef = useRef([]);
   const randomsRef = useRef([]);
+  const randomsAutoFillBlockedRef = useRef(false);
   useEffect(() => { archivesRef.current = archives; }, [archives]);
   useEffect(() => { randomsRef.current = randoms; }, [randoms]);
   const archivesLenRef = useRef(0);
@@ -958,8 +960,9 @@ export default function Home({ onSelectArchive, onLogout }) {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const fetchRandoms = useCallback(async ({ background = false, preferFresh = true } = {}) => {
+  const fetchRandoms = useCallback(async ({ background = false, preferFresh = true, append = false } = {}) => {
     exitColdRestoreMode();
+    if (!append) randomsAutoFillBlockedRef.current = false;
     if (background) setRandomsRefreshing(true);
     else setRandomsLoading(true);
     const currentIds = new Set(getRandomBatchIds(randomsRef.current));
@@ -991,7 +994,21 @@ export default function Home({ onSelectArchive, onLogout }) {
         if (!preferFresh || score >= RANDOMS_BATCH_SIZE * 5) break;
       }
 
-      setRandoms(bestBatch);
+      setRandoms((prev) => {
+        if (!append) return bestBatch;
+        const seen = new Set(getRandomBatchIds(prev));
+        const additions = bestBatch.filter((item) => {
+          const id = item?.arcid || item?.id;
+          if (!id || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        if (additions.length === 0) {
+          randomsAutoFillBlockedRef.current = true;
+          return prev;
+        }
+        return [...prev, ...additions].slice(0, RANDOMS_FILL_MAX_ITEMS);
+      });
       setRandomsUpdatedAt(Date.now());
 
       const nextIds = getRandomBatchIds(bestBatch);
@@ -1008,6 +1025,27 @@ export default function Home({ onSelectArchive, onLogout }) {
       else setRandomsLoading(false);
     }
   }, [exitColdRestoreMode]);
+
+  useEffect(() => {
+    if (
+      randomCollapsed ||
+      randomsLoading ||
+      randomsRefreshing ||
+      randoms.length === 0 ||
+      randoms.length >= RANDOMS_FILL_MAX_ITEMS ||
+      randomsAutoFillBlockedRef.current
+    ) return undefined;
+
+    const frame = requestAnimationFrame(() => {
+      const el = getRandomScrollerNode?.();
+      if (!el) return;
+      if (el.scrollWidth <= el.clientWidth + 8) {
+        fetchRandoms({ background: true, preferFresh: true, append: true });
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [fetchRandoms, getRandomScrollerNode, randomCollapsed, randoms.length, randomsLoading, randomsRefreshing]);
 
   const displayArchives = useMemo(() => {
     if (!cropCover) return archives;
