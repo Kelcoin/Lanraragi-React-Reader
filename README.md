@@ -149,4 +149,4 @@ npm run build
 
 ## 许可
 
-本作品采用 [Creative Commons 署名-非商业性使用 4.0 国际许可协议](https://creativecommons.org/licenses/by-nc/4.0/) (CC BY-NC 4.0) 许可。
+本项目采用 [MIT License](LICENSE) 许可。
