@@ -1,32 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-const INSTALL_DISMISS_KEY = 'lrr_pwa_install_dismissed_at';
-const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
-
-function isStandaloneDisplay() {
-  return (
-    window.matchMedia?.('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true
-  );
-}
-
-function wasInstallDismissedRecently() {
-  try {
-    const dismissedAt = Number(localStorage.getItem(INSTALL_DISMISS_KEY) || 0);
-    return dismissedAt > 0 && Date.now() - dismissedAt < INSTALL_DISMISS_MS;
-  } catch {
-    return false;
-  }
-}
-
-function dismissInstallPrompt() {
-  try {
-    localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now()));
-  } catch {}
-}
-
 export default function PwaStatus() {
-  const [installPrompt, setInstallPrompt] = useState(null);
   const [updateWorker, setUpdateWorker] = useState(null);
   const [connectionMessage, setConnectionMessage] = useState(() => (
     navigator.onLine ? '' : '已离线，可继续打开已缓存页面'
@@ -34,20 +8,12 @@ export default function PwaStatus() {
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event) => {
-      if (isStandaloneDisplay() || wasInstallDismissedRecently()) return;
       event.preventDefault();
-      setInstallPrompt(event);
-    };
-
-    const handleAppInstalled = () => {
-      setInstallPrompt(null);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
@@ -87,21 +53,6 @@ export default function PwaStatus() {
     };
   }, []);
 
-  const handleInstall = async () => {
-    if (!installPrompt) return;
-    const prompt = installPrompt;
-    setInstallPrompt(null);
-    try {
-      await prompt.prompt();
-      await prompt.userChoice;
-    } catch {}
-  };
-
-  const handleDismissInstall = () => {
-    dismissInstallPrompt();
-    setInstallPrompt(null);
-  };
-
   const handleApplyUpdate = () => {
     if (!updateWorker) return;
     updateWorker.postMessage({ type: 'SKIP_WAITING' });
@@ -114,16 +65,9 @@ export default function PwaStatus() {
         onAction: handleApplyUpdate,
         onClose: () => setUpdateWorker(null),
       }
-    : installPrompt
-      ? {
-          message: '可安装为应用',
-          action: '安装',
-          onAction: handleInstall,
-          onClose: handleDismissInstall,
-        }
-      : connectionMessage
-        ? { message: connectionMessage }
-        : null;
+    : connectionMessage
+      ? { message: connectionMessage }
+      : null;
 
   if (!primary) return null;
 

@@ -26,12 +26,14 @@ export default function CustomSelect({ value, options, onChange, style, compact 
       <div 
         ref={triggerRef}
         className="input-glass"
+        role="button"
+        tabIndex={0}
         style={{ 
           cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
           userSelect: 'none',
           padding: compact && isNarrow ? '6px 8px' : undefined,
-          background: isOpen ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-          borderColor: isOpen ? 'var(--accent)' : 'var(--glass-border)'
+          background: isOpen ? 'rgba(88, 183, 255, 0.14)' : undefined,
+          borderColor: isOpen ? 'rgba(141,216,255,0.68)' : undefined
         }}
         onClick={() => {
             if (!isOpen && triggerRef.current) {
@@ -40,6 +42,13 @@ export default function CustomSelect({ value, options, onChange, style, compact 
             }
             setIsOpen(prev => !prev);
           }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            triggerRef.current?.click();
+          }
+          if (e.key === 'Escape') setIsOpen(false);
+        }}
       >
         <span style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {selectedOption ? selectedOption.label : '请选择...'}
@@ -51,7 +60,8 @@ export default function CustomSelect({ value, options, onChange, style, compact 
         <div ref={dropdownRef} className="glass-panel dropdown-animate" data-select-dropdown="true" style={{
           position: 'fixed', top: pos.top, left: pos.left, width: pos.width || 'auto',
           zIndex: 99999, padding: '8px 0', maxHeight: '250px', overflowY: 'auto',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.6)'
+          boxShadow: '0 18px 52px rgba(0,0,0,0.46)',
+          background: 'var(--dropdown-bg)'
         }}>
           {options.map(opt => (
             <div
@@ -59,8 +69,8 @@ export default function CustomSelect({ value, options, onChange, style, compact 
               style={{
                 padding: '10px 16px', cursor: 'pointer', fontSize: '14px',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                background: opt.value === value ? 'rgba(74, 159, 240, 0.15)' : 'transparent',
-                color: opt.value === value ? 'var(--accent)' : 'var(--text-main)',
+                background: opt.value === value ? 'rgba(88, 183, 255, 0.16)' : 'transparent',
+                color: opt.value === value ? 'var(--accent-strong)' : 'var(--text-main)',
                 transition: 'background 0.2s'
               }}
               onMouseEnter={(e) => { if(opt.value !== value) e.target.style.background = 'rgba(255, 255, 255, 0.08)' }}

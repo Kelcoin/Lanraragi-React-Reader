@@ -538,14 +538,14 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
       {overlay}
       {/* ===== 卡片本体 ===== */}
       <div
-        className="glass-panel"
+        className="glass-panel archive-card-shell"
         title={undefined}
         style={{
           minWidth: isWide ? '316px' : '150px',
           width: isWide ? '316px' : '150px',
           padding: '12px',
           cursor: 'pointer',
-          transition: 'transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.28s ease',
+          transition: 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, border-color 0.22s ease',
           display: 'flex',
           flexDirection: 'column',
           transform: isPanelVisible ? 'translateY(-6px) translateZ(0)' : 'translateY(0) translateZ(0)',
@@ -595,9 +595,10 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             height: '210px',
             borderRadius: '8px',
             overflow: 'hidden',
-            backgroundColor: 'rgba(0,0,0,0.3)',
+            backgroundColor: 'var(--cover-bg)',
             position: 'relative',
           }}
+          className="archive-cover-frame"
         >
           {thumbState === 'loading' && !thumbSrc && (
             <div
@@ -695,6 +696,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             lineHeight: '1.4', minHeight: '36.4px',
             ...(isMobile ? { cursor: 'pointer', color: 'var(--accent)' } : {}),
           }}
+          className="archive-title"
         >
           {archive.title}
         </div>
@@ -755,7 +757,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             top: `${panelPos.top}px`,
             left: `${panelPos.left}px`,
             zIndex: 9999,
-            background: 'rgba(22, 24, 32, 0.96)',
+            background: 'var(--dropdown-bg)',
             backdropFilter: 'blur(24px)',
             WebkitBackdropFilter: 'blur(24px)',
             border: '1px solid rgba(140, 160, 190, 0.25)',
@@ -774,7 +776,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             <div
               style={{
                 fontSize: '14px', fontWeight: 700, lineHeight: 1.3,
-                marginBottom: '14px', color: '#fff',
+                marginBottom: '14px', color: 'var(--text-main)',
                 wordBreak: 'break-word',
               }}
             >
@@ -812,7 +814,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
                         borderRadius: '5px',
                         padding: '2px 6px',
                         background: `${group.color}15`,
-                        color: '#e3e9f3',
+                        color: 'var(--text-main)',
                         fontSize: '11px',
                         cursor: 'pointer',
                         whiteSpace: 'nowrap',

@@ -515,15 +515,15 @@ function getNormalReaderFrameStyle(isMobile) {
     width: '100%',
     marginLeft: 'auto',
     marginRight: 'auto',
-    background: '#0f1115',
-    border: '1px solid rgba(255,255,255,0.06)',
+    background: 'linear-gradient(180deg, rgba(10,13,19,0.96), rgba(5,7,10,0.96))',
+    border: '1px solid rgba(174,191,214,0.12)',
     borderRadius: '16px',
     padding: isMobile ? '16px' : '24px',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    boxShadow: '0 18px 50px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.035)',
     boxSizing: 'border-box',
   };
 }
@@ -533,9 +533,9 @@ function getTopBarButtonStyle(isMobile, disabled = false) {
     padding: isMobile ? '8px 10px' : '8px 14px',
     minWidth: isMobile ? '40px' : 'unset',
     height: isMobile ? '40px' : 'auto',
-    background: 'rgba(255, 255, 255, 0.06)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    color: '#ccc',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.035))',
+    border: '1px solid rgba(174,191,214,0.16)',
+    color: '#d9e4f2',
     borderRadius: '8px',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: isMobile ? '16px' : '13px',
@@ -554,8 +554,8 @@ function getPageNavButtonStyle(isMobile) {
   return {
     width: isMobile ? '52px' : '56px',
     height: isMobile ? '52px' : '56px',
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.15)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.1), rgba(255,255,255,0.045))',
+    border: '1px solid rgba(174,191,214,0.18)',
     color: '#fff',
     borderRadius: isMobile ? '10px' : '12px',
     cursor: 'pointer',
@@ -608,12 +608,12 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
   const pageNavBtnStyle = getPageNavButtonStyle(isMobile);
   const frameStyle = getNormalReaderFrameStyle(isMobile);
   return (
-    <div style={{ minHeight: '100vh', background: '#181a20', color: '#fff' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff' }}>
       <div style={skeletonViewportStyle}>
         <div
           style={{
             padding: isMobile ? '14px 14px' : '14px 24px',
-            background: 'rgba(24, 26, 32, 0.92)',
+            background: 'rgba(15, 18, 25, 0.9)',
             backdropFilter: 'blur(16px)',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             display: 'flex',
@@ -2147,7 +2147,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       ref={containerRef}
       style={{
         minHeight: '100vh',
-        background: viewMode === 'normal' ? '#181a20' : '#000',
+        background: viewMode === 'normal' ? 'transparent' : '#000',
         color: '#fff',
       }}
     >
@@ -2160,7 +2160,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         <div
           style={{
             padding: '14px 24px',
-            background: 'rgba(24, 26, 32, 0.92)',
+            background: 'rgba(15, 18, 25, 0.9)',
             backdropFilter: 'blur(16px)',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             display: 'flex',

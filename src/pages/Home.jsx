@@ -22,6 +22,7 @@ const FILTER_KEY = 'lrr_filter';
 const PRESETS_KEY = 'lrr_filter_presets';
 const RANDOMS_RECENT_KEY = 'lrr_random_recent_v1';
 const RANDOMS_BATCH_SIZE = 8;
+const RANDOMS_FILL_MAX_ITEMS = 24;
 const RANDOMS_FETCH_ATTEMPTS = 3;
 const RANDOMS_RECENT_LIMIT = 48;
 const RANDOMS_REQUEST_TIMEOUT_MS = 6500;
@@ -203,7 +204,7 @@ function SkeletonCard({ showProgress = false }) {
   return (
     <div style={{
       flexShrink: 0, minWidth: '150px', width: '150px',
-      background: 'rgba(22, 24, 32, 0.85)',
+      background: 'var(--surface-1)',
       borderRadius: '14px',
       border: '1px solid rgba(255,255,255,0.08)',
       display: 'flex', flexDirection: 'column', padding: '12px',
@@ -279,7 +280,7 @@ function CollapseButton({ collapsed, onClick, title }) {
       type="button"
       onClick={onClick}
       title={title}
-      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', opacity: 0.8, padding: '4px', borderRadius: '4px', display: 'flex' }}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-sub)', opacity: 0.8, padding: '4px', borderRadius: '4px', display: 'flex' }}
     >
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style={{ transition: 'transform 0.3s', transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}>
         <path d="M6 15l6-6 6 6z" />
@@ -288,7 +289,13 @@ function CollapseButton({ collapsed, onClick, title }) {
   );
 }
 
-export default function Home({ onSelectArchive, onLogout }) {
+const THEME_MODE_LABELS = {
+  auto: '自适应',
+  dark: '深色',
+  light: '浅色',
+};
+
+export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', onThemeModeChange }) {
   const [navSnapshot] = useState(() => consumeHomeNavigationSnapshot());
   const [coldRestoreBoot] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -386,6 +393,7 @@ export default function Home({ onSelectArchive, onLogout }) {
   const pendingArchivesScrollRef = useRef(false);
   const archivesRef = useRef([]);
   const randomsRef = useRef([]);
+  const randomsAutoFillBlockedRef = useRef(false);
   useEffect(() => { archivesRef.current = archives; }, [archives]);
   useEffect(() => { randomsRef.current = randoms; }, [randoms]);
   const archivesLenRef = useRef(0);
@@ -958,8 +966,9 @@ export default function Home({ onSelectArchive, onLogout }) {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const fetchRandoms = useCallback(async ({ background = false, preferFresh = true } = {}) => {
+  const fetchRandoms = useCallback(async ({ background = false, preferFresh = true, append = false } = {}) => {
     exitColdRestoreMode();
+    if (!append) randomsAutoFillBlockedRef.current = false;
     if (background) setRandomsRefreshing(true);
     else setRandomsLoading(true);
     const currentIds = new Set(getRandomBatchIds(randomsRef.current));
@@ -991,7 +1000,21 @@ export default function Home({ onSelectArchive, onLogout }) {
         if (!preferFresh || score >= RANDOMS_BATCH_SIZE * 5) break;
       }
 
-      setRandoms(bestBatch);
+      setRandoms((prev) => {
+        if (!append) return bestBatch;
+        const seen = new Set(getRandomBatchIds(prev));
+        const additions = bestBatch.filter((item) => {
+          const id = item?.arcid || item?.id;
+          if (!id || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        if (additions.length === 0) {
+          randomsAutoFillBlockedRef.current = true;
+          return prev;
+        }
+        return [...prev, ...additions].slice(0, RANDOMS_FILL_MAX_ITEMS);
+      });
       setRandomsUpdatedAt(Date.now());
 
       const nextIds = getRandomBatchIds(bestBatch);
@@ -1008,6 +1031,27 @@ export default function Home({ onSelectArchive, onLogout }) {
       else setRandomsLoading(false);
     }
   }, [exitColdRestoreMode]);
+
+  useEffect(() => {
+    if (
+      randomCollapsed ||
+      randomsLoading ||
+      randomsRefreshing ||
+      randoms.length === 0 ||
+      randoms.length >= RANDOMS_FILL_MAX_ITEMS ||
+      randomsAutoFillBlockedRef.current
+    ) return undefined;
+
+    const frame = requestAnimationFrame(() => {
+      const el = getRandomScrollerNode?.();
+      if (!el) return;
+      if (el.scrollWidth <= el.clientWidth + 8) {
+        fetchRandoms({ background: true, preferFresh: true, append: true });
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [fetchRandoms, getRandomScrollerNode, randomCollapsed, randoms.length, randomsLoading, randomsRefreshing]);
 
   const displayArchives = useMemo(() => {
     if (!cropCover) return archives;
@@ -1331,7 +1375,7 @@ export default function Home({ onSelectArchive, onLogout }) {
       }
     `}</style>
     <div style={{ padding: isNarrow ? '16px 10px' : '24px 20px', maxWidth: '1680px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', marginBottom: '32px', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             LRR 阅读器
@@ -1390,7 +1434,16 @@ export default function Home({ onSelectArchive, onLogout }) {
           </h1>
           <div style={{ color: 'var(--text-sub)', fontSize: '14px' }}>欢迎回来，继续你的探索之旅</div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            className="btn theme-mode-btn"
+            type="button"
+            onClick={onThemeModeChange}
+            style={{ fontSize: '13px' }}
+            title="切换浅色、深色或跟随系统"
+          >
+            {THEME_MODE_LABELS[themeMode] || THEME_MODE_LABELS.auto}
+          </button>
           <button className="btn" onClick={() => {
             setCfgWorkerUrl(getWorkerUrl());
             setCfgSyncToken(getSyncToken());
@@ -1663,7 +1716,7 @@ export default function Home({ onSelectArchive, onLogout }) {
                   right: 0,
                   top: 'calc(100% + 8px)',
                   zIndex: 50,
-                  background: 'rgba(16,18,24,0.96)',
+                  background: 'var(--dropdown-bg)',
                   backdropFilter: 'blur(18px)',
                   WebkitBackdropFilter: 'blur(18px)',
                   borderRadius: '10px',
@@ -1754,7 +1807,7 @@ export default function Home({ onSelectArchive, onLogout }) {
                     ...(isActive ? {
                       background: 'var(--accent)',
                       borderColor: 'var(--accent)',
-                      color: '#fff',
+                      color: 'white',
                       transform: 'translateY(-2px)',
                     } : {}),
                   }}
@@ -1918,7 +1971,7 @@ export default function Home({ onSelectArchive, onLogout }) {
               }}
             >
               <span>Worker 设置</span>
-              <span style={{ color: '#ccc', opacity: 0.8, padding: '4px', display: 'flex' }}>
+              <span style={{ color: 'var(--text-sub)', opacity: 0.8, padding: '4px', display: 'flex' }}>
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style={{ transition: 'transform 0.3s', transform: workerConfigOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}>
                   <path d="M6 15l6-6 6 6z" />
                 </svg>

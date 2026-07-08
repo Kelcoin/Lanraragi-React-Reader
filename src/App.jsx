@@ -7,11 +7,17 @@ import { checkServerStatus } from './lib/api';
 import { navigateHome, navigateToArchive, parseRouteFromLocation } from './lib/navigation';
 import { startHistoryExistenceCheckTimer, stopHistoryExistenceCheckTimer } from './lib/historyMaintenance';
 import { getWorkerUrl, setWorkerUrl, getSyncToken, setSyncToken, exportConfig, importConfig } from './lib/worker-config';
+import { applyThemeMode, getNextThemeMode, readStoredThemeMode, watchSystemTheme, writeStoredThemeMode } from './lib/theme';
 import PwaStatus from './components/PwaStatus';
 import './index.css';
 
 export default function App() {
   const [route, setRoute] = useState(() => parseRouteFromLocation());
+  const [themeMode, setThemeMode] = useState(() => {
+    const mode = readStoredThemeMode();
+    applyThemeMode(mode);
+    return mode;
+  });
   
   const [savedConfig, setSavedConfig] = useState({
     url: localStorage.getItem('lrr_server_url') || '',
@@ -32,6 +38,18 @@ export default function App() {
   useEffect(() => {
     loadTagDB(); 
   }, []);
+
+  useEffect(() => {
+    applyThemeMode(themeMode);
+    writeStoredThemeMode(themeMode);
+    return watchSystemTheme(() => {
+      if (themeMode === 'auto') applyThemeMode(themeMode);
+    });
+  }, [themeMode]);
+
+  const handleThemeModeChange = () => {
+    setThemeMode((mode) => getNextThemeMode(mode));
+  };
 
   useEffect(() => {
     const applyRoute = (route) => {
@@ -115,20 +133,20 @@ export default function App() {
   if (!savedConfig.url || !savedConfig.key) {
     return (
       <>
-        <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', padding: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
-          <form onSubmit={handleConnect} className="glass-panel" style={{ padding: '36px 30px', display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '440px', margin: 'auto 0' }}>
+        <div className="login-shell">
+          <form onSubmit={handleConnect} className="glass-panel login-card">
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: '24px' }}>配置 LANraragi</h2>
+              <h2 className="login-title">配置 LANraragi</h2>
               <div style={{ fontSize: '13px', color: 'var(--text-sub)' }}>连接到你的专属私人漫画库</div>
             </div>
             
             <div>
-              <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-sub)' }}>服务器地址 *</label>
+              <label className="field-label">服务器地址 *</label>
               <input type="text" className="input-glass" placeholder="如 http://192.168.1.10:3000" value={tempConfig.url} onChange={e => setTempConfig({...tempConfig, url: e.target.value})} required />
             </div>
             
             <div>
-              <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-sub)' }}>API Key *</label>
+              <label className="field-label">API Key *</label>
               <input type="password" className="input-glass" placeholder="在 LRR 设置页面获取" value={tempConfig.key} onChange={e => setTempConfig({...tempConfig, key: e.target.value})} required />
             </div>
 
@@ -165,7 +183,7 @@ export default function App() {
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '14px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-sub)' }}>Cloudflare Worker 端点</label>
+                    <label className="field-label">Cloudflare Worker 端点</label>
                     <input type="text" className="input-glass" placeholder="https://lrr-sync.xxx.workers.dev" value={tempConfig.workerUrl} onChange={e => setTempConfig({...tempConfig, workerUrl: e.target.value})} />
                     <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '5px', lineHeight: 1.5 }}>
                       用于 EH 评论代理与远端阅读历史
@@ -173,7 +191,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-sub)' }}>访问 Token</label>
+                    <label className="field-label">访问 Token</label>
                     <input type="password" className="input-glass" placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
                   </div>
                 </div>
@@ -189,7 +207,7 @@ export default function App() {
               </button>
             </div>
 
-            <button type="submit" className="btn" style={{ marginTop: '8px', padding: '12px' }} disabled={loginLoading}>
+            <button type="submit" className="btn" style={{ marginTop: '8px', padding: '12px', background: 'linear-gradient(180deg, rgba(88,183,255,0.36), rgba(88,183,255,0.18))', borderColor: 'rgba(141,216,255,0.58)' }} disabled={loginLoading}>
               {loginLoading ? '正在验证连接...' : '开始阅读'}
             </button>
 
@@ -240,7 +258,7 @@ export default function App() {
           syncToken: getSyncToken(),
         });
         navigateHome({ replace: true });
-      }} />
+      }} themeMode={themeMode} onThemeModeChange={handleThemeModeChange} />
       <PwaStatus />
     </>
   );
