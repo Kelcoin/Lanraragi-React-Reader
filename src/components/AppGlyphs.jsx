@@ -203,12 +203,52 @@ function renderToolbarGlyph(name) {
       return <path d="M3 3h7v7H3V3zM14 3h7v7h-7V3zM14 14h7v7h-7V14zM3 14h7v7H3V14z" />;
     case 'settings':
       return <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />;
+    case 'cover':
+      return (
+        <>
+          <rect x="4" y="5" width="16" height="14" rx="2.5" />
+          <path d="M7.5 15.5l3.2-3.4 2.2 2.3 1.5-1.6 2.2 2.7" />
+          <circle cx="15.5" cy="9" r="1.2" />
+          <path d="M8 3.5h8" opacity="0.6" />
+        </>
+      );
     case 'fullscreen':
       return <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />;
     case 'fullscreenExit':
       return <path d="M4 8V5a2 2 0 0 1 2-2h3M17 3h2a2 2 0 0 1 2 2v3M4 16v3a2 2 0 0 0 2 2h3M17 21h2a2 2 0 0 0 2-2v-3" />;
     default:
       return <path d="M12 5v14M5 12h14" />;
+  }
+}
+
+function renderThemeModeGlyph(mode) {
+  switch (mode) {
+    case 'light':
+      return (
+        <>
+          <circle cx="12" cy="12" r="3.7" fill="currentColor" fillOpacity="0.16" />
+          <circle cx="12" cy="12" r="3.15" />
+          <path d="M12 3.75v1.7M12 18.55v1.7M4.55 12h-1.7M21.15 12h-1.7M6.75 6.75l-1.2-1.2M18.45 18.45l-1.2-1.2M17.25 6.75l1.2-1.2M5.55 18.45l1.2-1.2" />
+        </>
+      );
+    case 'dark':
+      return (
+        <>
+          <path d="M18.55 15.15A7.1 7.1 0 0 1 8.85 5.45 7.75 7.75 0 1 0 18.55 15.15z" fill="currentColor" fillOpacity="0.12" />
+          <path d="M18.55 15.15A7.1 7.1 0 0 1 8.85 5.45 7.75 7.75 0 1 0 18.55 15.15z" />
+          <path d="M15.6 5.3l.55 1.25 1.25.55-1.25.55-.55 1.25-.55-1.25-1.25-.55 1.25-.55.55-1.25z" fill="currentColor" stroke="none" />
+        </>
+      );
+    case 'auto':
+    default:
+      return (
+        <>
+          <rect x="4.5" y="5.75" width="15" height="10.5" rx="2.2" fill="currentColor" fillOpacity="0.1" />
+          <rect x="4.5" y="5.75" width="15" height="10.5" rx="2.2" />
+          <path d="M9 20.25h6M12 16.25v4" opacity="0.72" />
+          <path d="M8.35 10.65a2.2 2.2 0 0 1 3.75-1.55 2.9 2.9 0 0 0 3.55 3.55 3.85 3.85 0 0 1-7.3-2z" />
+        </>
+      );
   }
 }
 
@@ -238,6 +278,14 @@ export function ToolbarGlyph({ name, size = 20, color = 'currentColor', style })
   return (
     <GlyphBase size={size} color={color} strokeWidth={2} style={style}>
       {renderToolbarGlyph(name)}
+    </GlyphBase>
+  );
+}
+
+export function ThemeModeGlyph({ mode = 'auto', size = 18, color = 'currentColor', style }) {
+  return (
+    <GlyphBase size={size} color={color} strokeWidth={1.85} style={style}>
+      {renderThemeModeGlyph(mode)}
     </GlyphBase>
   );
 }

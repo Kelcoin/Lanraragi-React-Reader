@@ -26,6 +26,13 @@ export function getEhCookie() {
   }
 }
 
+export function hasValidEhCookie(cookie = getEhCookie()) {
+  const value = String(cookie || '').trim();
+  if (!value) return false;
+  return /(?:^|;\s*)ipb_member_id\s*=\s*[^;\s]+/i.test(value)
+    && /(?:^|;\s*)ipb_pass_hash\s*=\s*[^;\s]+/i.test(value);
+}
+
 export function extractEhGalleryUrl(archive) {
   const tags = String(archive?.tags || '')
     .split(',')

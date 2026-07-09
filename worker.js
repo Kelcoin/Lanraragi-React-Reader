@@ -5,9 +5,11 @@ addEventListener('fetch', (event) => {
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-sync-token',
+  'Access-Control-Allow-Headers': 'Content-Type, x-sync-token, x-admin-api-key',
   'Access-Control-Max-Age': '86400',
 };
+
+const DEDUPE_NON_DUP_KEY = 'dedupe:non-duplicates';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -481,6 +483,19 @@ function getToken(request) {
   return request.headers.get('x-sync-token') || url.searchParams.get('token') || '';
 }
 
+function normalizePairKey(value) {
+  const parts = String(value || '').split('|').map(part => part.trim()).filter(Boolean);
+  if (parts.length !== 2 || parts[0] === parts[1]) return '';
+  return parts.sort().join('|');
+}
+
+function normalizePairKeys(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map(normalizePairKey)
+    .filter(Boolean)))
+    .sort();
+}
+
 async function getHistory(request) {
   const authErr = await requireAuth(request);
   if (authErr) return authErr;
@@ -631,6 +646,151 @@ async function deleteHistory(request) {
   }
 }
 
+async function getNonDuplicatePairs(request) {
+  const authErr = await requireAuth(request);
+  if (authErr) return authErr;
+  incrementCounter();
+  if (typeof HISTORY_KV === 'undefined') return json({ error: 'KV is not bound' }, 500);
+
+  try {
+    const raw = await HISTORY_KV.get(DEDUPE_NON_DUP_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return json({ pairs: normalizePairKeys(parsed) });
+  } catch (err) {
+    return json({ error: 'KV read failed: ' + err.message }, 500);
+  }
+}
+
+async function putNonDuplicatePairs(request) {
+  const authErr = await requireAuth(request);
+  if (authErr) return authErr;
+  incrementCounter();
+  if (typeof HISTORY_KV === 'undefined') return json({ error: 'KV is not bound' }, 500);
+
+  let payload;
+  try { payload = await request.json(); } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+
+  const incoming = normalizePairKeys(payload?.pairs);
+  if (incoming.length === 0) return json({ error: 'Missing pairs array' }, 400);
+
+  try {
+    const raw = await HISTORY_KV.get(DEDUPE_NON_DUP_KEY);
+    const existing = normalizePairKeys(raw ? JSON.parse(raw) : []);
+    const next = normalizePairKeys([...existing, ...incoming]);
+    await HISTORY_KV.put(DEDUPE_NON_DUP_KEY, JSON.stringify(next));
+    return json({ ok: true, count: next.length, added: incoming.length });
+  } catch (err) {
+    return json({ error: 'KV write failed: ' + err.message }, 500);
+  }
+}
+
+async function getConfiguredAdminApiKey() {
+  if (typeof HISTORY_KV === 'undefined') return '';
+  try {
+    return String(await HISTORY_KV.get('adminApiKey') || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function requireAdminApiKey(request, payload) {
+  const configured = await getConfiguredAdminApiKey();
+  if (!configured) {
+    return json({
+      error: 'ADMIN_KEY_NOT_CONFIGURED',
+      detail: 'KV 中未配置 adminApiKey，导入/导出功能已拒绝响应',
+    }, 403);
+  }
+  const url = new URL(request.url);
+  const supplied = request.headers.get('x-admin-api-key') || url.searchParams.get('apiKey') || payload?.apiKey || '';
+  if (supplied !== configured) {
+    return json({ error: 'Unauthorized', detail: 'Admin API key invalid or missing' }, 401);
+  }
+  return null;
+}
+
+async function listKVKeys(prefix) {
+  const names = [];
+  let cursor;
+  do {
+    const page = await HISTORY_KV.list({ prefix, cursor });
+    for (const key of page.keys || []) names.push(key.name);
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return names;
+}
+
+async function exportKV(request) {
+  let payload;
+  try { payload = await request.json(); } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+  const adminErr = await requireAdminApiKey(request, payload);
+  if (adminErr) return adminErr;
+  if (typeof HISTORY_KV === 'undefined') return json({ error: 'KV is not bound' }, 500);
+
+  const selected = payload?.sections || {};
+  const includeHistory = selected.history !== false;
+  const includeDedupe = selected.dedupe !== false;
+  const data = { version: 1, exportedAt: new Date().toISOString(), sections: {} };
+
+  try {
+    if (includeHistory) {
+      const history = {};
+      for (const key of await listKVKeys('history:')) {
+        history[key] = await HISTORY_KV.get(key);
+      }
+      data.sections.history = history;
+    }
+    if (includeDedupe) {
+      const raw = await HISTORY_KV.get(DEDUPE_NON_DUP_KEY);
+      data.sections.dedupe = { [DEDUPE_NON_DUP_KEY]: raw || '[]' };
+    }
+    return json({ ok: true, data });
+  } catch (err) {
+    return json({ error: 'KV export failed: ' + err.message }, 500);
+  }
+}
+
+async function importKV(request) {
+  let payload;
+  try { payload = await request.json(); } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+  const adminErr = await requireAdminApiKey(request, payload);
+  if (adminErr) return adminErr;
+  if (typeof HISTORY_KV === 'undefined') return json({ error: 'KV is not bound' }, 500);
+
+  const selected = payload?.sections || {};
+  const input = payload?.data?.sections ? payload.data.sections : payload?.data;
+  if (!input || typeof input !== 'object') return json({ error: 'Invalid import data' }, 400);
+
+  let imported = 0;
+  try {
+    if (selected.history !== false && input.history && typeof input.history === 'object') {
+      for (const [key, value] of Object.entries(input.history)) {
+        if (!key.startsWith('history:')) continue;
+        await HISTORY_KV.put(key, typeof value === 'string' ? value : JSON.stringify(value));
+        imported += 1;
+      }
+    }
+    if (selected.dedupe !== false && input.dedupe && typeof input.dedupe === 'object') {
+      const raw = input.dedupe[DEDUPE_NON_DUP_KEY] || input.dedupe.pairs || [];
+      const incoming = normalizePairKeys(typeof raw === 'string' ? JSON.parse(raw || '[]') : raw);
+      const existingRaw = await HISTORY_KV.get(DEDUPE_NON_DUP_KEY);
+      const existing = normalizePairKeys(existingRaw ? JSON.parse(existingRaw) : []);
+      const next = normalizePairKeys([...existing, ...incoming]);
+      await HISTORY_KV.put(DEDUPE_NON_DUP_KEY, JSON.stringify(next));
+      imported += incoming.length;
+    }
+    return json({ ok: true, imported });
+  } catch (err) {
+    return json({ error: 'KV import failed: ' + err.message }, 500);
+  }
+}
+
 // ── Status Page (GET /) ───────────────────────────────────────
 async function statusPage(request) {
   const reloadParam = new URL(request.url).searchParams.get('reload');
@@ -665,6 +825,14 @@ async function statusPage(request) {
   })();
   const hasKV = typeof HISTORY_KV !== 'undefined';
   const tokenCount = cachedTokens ? cachedTokens.size : 0;
+  const adminKeyConfigured = !!(await getConfiguredAdminApiKey());
+  const dedupeCount = await (async () => {
+    if (!hasKV) return 'N/A';
+    try {
+      const raw = await HISTORY_KV.get(DEDUPE_NON_DUP_KEY);
+      return normalizePairKeys(raw ? JSON.parse(raw) : []).length;
+    } catch { return '错误'; }
+  })();
 
   const tokenStatusHtml = authEnabled
     ? (tokenCount > 0
@@ -696,11 +864,23 @@ async function statusPage(request) {
   .divider { border-top:1px solid rgba(255,255,255,0.06); margin:24px 0 20px; }
   .section-title { color:#9ca3af; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; }
   .footer { font-size:11px; color:#4b5563; text-align:center; margin-top:20px; }
+  .card { max-width:560px; }
+  .warning { border:1px solid rgba(248,113,113,.45); background:rgba(248,113,113,.12); color:#fecaca;
+             padding:12px 14px; border-radius:10px; margin:0 0 18px; font-size:13px; line-height:1.5; }
+  .tool { display:grid; gap:10px; margin-top:10px; }
+  .checks { display:flex; gap:14px; flex-wrap:wrap; color:#cbd5e1; font-size:13px; }
+  input, textarea { width:100%; background:#111827; border:1px solid rgba(255,255,255,.09); color:#e5e7eb;
+                    border-radius:8px; padding:9px 10px; font:inherit; }
+  textarea { min-height:110px; resize:vertical; }
+  button { background:#2563eb; border:0; border-radius:8px; color:white; padding:9px 12px; cursor:pointer; font-weight:650; }
+  button.secondary { background:#374151; }
+  #kvResult { color:#9ca3af; font-size:12px; white-space:pre-wrap; line-height:1.5; }
 </style>
 </head>
 <body>
 <div class="card">
   <h1>LRR Sync Worker</h1>
+  ${adminKeyConfigured ? '' : '<div class="warning">KV 未配置 <b>adminApiKey</b>。KV 导入/导出接口会拒绝所有调用，请先在 Cloudflare KV 中添加该键后再使用。</div>'}
 
   <div class="section-title">服务概览</div>
   <div class="stat"><span class="label">服务状态</span><span class="ok">● 运行中</span></div>
@@ -709,14 +889,67 @@ async function statusPage(request) {
   <div class="stat"><span class="label">阅读记录数</span><span class="value">${totalArchives}</span></div>
   <div class="stat"><span class="label">KV 存储</span><span class="${hasKV ? 'ok' : 'warn'}">${hasKV ? '已绑定' : '未绑定'}</span></div>
   <div class="stat"><span class="label">KV 读取</span><span class="${kvOk ? 'ok' : 'err'}">${kvOk ? '正常' : '失败'}</span></div>
+  <div class="stat"><span class="label">非重复 pair</span><span class="value">${dedupeCount}</span></div>
 
   <div class="divider"></div>
   <div class="section-title">认证状态</div>
   ${tokenStatusHtml}
+  <div class="stat"><span class="label">Admin API Key</span><span class="${adminKeyConfigured ? 'ok' : 'err'}">${adminKeyConfigured ? '已配置' : '未配置'}</span></div>
   <div class="stat"><span class="label">部署时间</span><span class="value">${new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC</span></div>
+
+  <div class="divider"></div>
+  <div class="section-title">KV 导入 / 导出</div>
+  <div class="tool">
+    <input id="adminKey" type="password" placeholder="Admin API Key">
+    <div class="checks">
+      <label><input id="sectionHistory" type="checkbox" checked style="width:auto"> 阅读历史</label>
+      <label><input id="sectionDedupe" type="checkbox" checked style="width:auto"> 非重复 arcid</label>
+    </div>
+    <button id="exportBtn" type="button">导出选中数据</button>
+    <textarea id="importData" placeholder="粘贴导出的 JSON 后点击导入"></textarea>
+    <button id="importBtn" class="secondary" type="button">导入选中数据</button>
+    <div id="kvResult"></div>
+  </div>
 
   <div class="footer">LRR Modern Reader · Cloudflare Worker</div>
 </div>
+<script>
+const result = document.getElementById('kvResult');
+function sections() {
+  return {
+    history: document.getElementById('sectionHistory').checked,
+    dedupe: document.getElementById('sectionDedupe').checked,
+  };
+}
+async function call(path, body) {
+  const apiKey = document.getElementById('adminKey').value.trim();
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-api-key': apiKey },
+    body: JSON.stringify({ ...body, apiKey }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && (data.detail || data.error)) || 'HTTP ' + res.status);
+  return data;
+}
+document.getElementById('exportBtn').onclick = async () => {
+  try {
+    result.textContent = '正在导出...';
+    const data = await call('/kv/export', { sections: sections() });
+    document.getElementById('importData').value = JSON.stringify(data.data, null, 2);
+    result.textContent = '导出完成，JSON 已填入文本框。';
+  } catch (e) { result.textContent = e.message; }
+};
+document.getElementById('importBtn').onclick = async () => {
+  try {
+    const raw = document.getElementById('importData').value.trim();
+    if (!raw) throw new Error('请先粘贴导入 JSON');
+    result.textContent = '正在导入...';
+    const data = await call('/kv/import', { sections: sections(), data: JSON.parse(raw) });
+    result.textContent = '导入完成：' + data.imported + ' 项。';
+  } catch (e) { result.textContent = e.message; }
+};
+</script>
 </body>
 </html>`;
   return new Response(html, {
@@ -769,6 +1002,20 @@ async function handleRequest(request) {
     if (request.method === 'PUT') return putHistory(request);
     if (request.method === 'DELETE') return deleteHistory(request);
     return json({ error: 'Method not allowed' }, 405);
+  }
+
+  if (url.pathname === '/dedupe/non-duplicates') {
+    if (request.method === 'GET') return getNonDuplicatePairs(request);
+    if (request.method === 'PUT') return putNonDuplicatePairs(request);
+    return json({ error: 'Method not allowed' }, 405);
+  }
+
+  if (url.pathname === '/kv/export' && request.method === 'POST') {
+    return exportKV(request);
+  }
+
+  if (url.pathname === '/kv/import' && request.method === 'POST') {
+    return importKV(request);
   }
 
   if (url.pathname === '/api' && request.method === 'POST') {

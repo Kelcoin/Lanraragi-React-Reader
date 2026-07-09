@@ -733,6 +733,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [historyDeleteTarget, setHistoryDeleteTarget] = useState(null);
+  const [coverSetting, setCoverSetting] = useState(false);
+  const [coverSetPage, setCoverSetPage] = useState(0);
+  const [coverConfirmPage, setCoverConfirmPage] = useState(0);
   const [drawerPrefetchSet, setDrawerPrefetchSet] = useState(() => new Set());
   const [drawerViewport, setDrawerViewport] = useState({ height: 0, scrollTop: 0, width: 0 });
   const [readerReady, setReaderReady] = useState(() => hasSnapshot);
@@ -1871,6 +1874,28 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     setHistoryDeleteTarget(null);
   }, [historyDeleteTarget]);
 
+  const handleSetCover = useCallback(() => {
+    if (!archiveId || pages.length === 0 || coverSetting) return;
+    setCoverConfirmPage(currentIndex + 1);
+  }, [archiveId, coverSetting, currentIndex, pages.length]);
+
+  const confirmSetCover = useCallback(async () => {
+    if (!archiveId || !coverConfirmPage || coverSetting) return;
+    const page = coverConfirmPage;
+    setCoverSetting(true);
+    try {
+      await lrrApi.setArchiveThumbnail(archiveId, page);
+      clearImageCache();
+      setCoverSetPage(page);
+      setCoverConfirmPage(0);
+      setTimeout(() => setCoverSetPage((prev) => (prev === page ? 0 : prev)), 1800);
+    } catch (err) {
+      alert(err.message || '设置封面失败');
+    } finally {
+      setCoverSetting(false);
+    }
+  }, [archiveId, coverConfirmPage, coverSetting]);
+
   // ===== Back handler: immersive → normal mode, not home =====
   const handleGoBack = useCallback(() => {
     if (viewMode === 'immersive') {
@@ -2226,6 +2251,23 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 ? <ToolbarGlyph name={viewMode === 'normal' ? 'fullscreen' : 'fullscreenExit'} size={18} />
                 : (viewMode === 'normal' ? '沉浸模式' : '退出沉浸')}
             </button>
+            <button
+              disabled={!readerReady || pages.length === 0 || coverSetting}
+              style={{
+                ...btnBase,
+                padding: isMobile ? '8px 10px' : '8px 14px',
+                fontSize: isMobile ? '16px' : '13px',
+                opacity: (!readerReady || pages.length === 0 || coverSetting) ? 0.45 : 1,
+                cursor: (!readerReady || pages.length === 0 || coverSetting) ? 'not-allowed' : 'pointer',
+              }}
+              onClick={handleSetCover}
+              title={`将当前第 ${currentIndex + 1} 页设为封面`}
+              aria-label={`将当前第 ${currentIndex + 1} 页设为封面`}
+            >
+              {isMobile
+                ? <ToolbarGlyph name="cover" size={18} />
+                : (coverSetting ? '设置中...' : coverSetPage === currentIndex + 1 ? '已设为封面' : '设为封面')}
+            </button>
             <button style={{ ...btnBase, padding: isMobile ? '8px 10px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} data-panel-toggle onClick={() => { setShowSettingsPanel((v) => !v); setShowHistoryPanel(false); }}>
               {isMobile ? <ToolbarGlyph name="settings" size={18} /> : '阅读设定'}
             </button>
@@ -2290,82 +2332,6 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 </div>
               </div>
 
-              <div>
-                <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 600, marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>EH 评论区</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>启用 EH 评论区</span>
-                    <div
-                      onClick={() => updateSettings((s) => ({ ...s, ehEnabled: !s.ehEnabled }))}
-                      style={{
-                        width: '40px', height: '22px', borderRadius: '11px',
-                        background: settings.ehEnabled ? '#4caf50' : 'rgba(255,255,255,0.15)',
-                        position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
-                      }}
-                    >
-                      <div style={{
-                        position: 'absolute', top: '3px',
-                        left: settings.ehEnabled ? '21px' : '3px',
-                        width: '16px', height: '16px', borderRadius: '50%',
-                        background: '#fff', transition: 'left 0.2s',
-                      }} />
-                    </div>
-                  </label>
-                  {settings.ehEnabled && (
-                    <>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <label style={{ fontSize: '11px', color: 'var(--text-sub)' }}>EH Cookie</label>
-                        <input type="text" className="input-glass"
-                          value={settings.ehCookie}
-                          onChange={(e) => updateSettings((s) => ({ ...s, ehCookie: e.target.value }))}
-                          placeholder="igneous=...; ipb_member_id=...; ipb_pass_hash=..."
-                          style={{ padding: '5px 10px', fontSize: '11px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#ccc', width: '100%', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                      <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>最低展示分数</span>
-                        <input type="text" inputMode="numeric" pattern="-?[0-9]*" className="input-glass no-spinner"
-                          value={String(settings.ehMinScore)}
-                          onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= -999) updateSettings((s) => ({ ...s, ehMinScore: n })); else if (v === '' || v === '-') updateSettings((s) => ({ ...s, ehMinScore: 0 })); }}
-                          onBlur={() => { const n = parseInt(settings.ehMinScore, 10); if (isNaN(n)) updateSettings((s) => ({ ...s, ehMinScore: 0 })); }}
-                          style={{ width: '52px', padding: '5px 6px', fontSize: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#ccc', textAlign: 'center' }}
-                        />
-                      </label>
-                      <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>最多展示数量</span>
-                        <input type="text" inputMode="numeric" pattern="[0-9]*" className="input-glass no-spinner"
-                          value={String(settings.ehMaxComments)}
-                          onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= 1 && n <= 200) updateSettings((s) => ({ ...s, ehMaxComments: n })); }}
-                          onBlur={() => { const n = parseInt(settings.ehMaxComments, 10); if (isNaN(n) || n < 1) updateSettings((s) => ({ ...s, ehMaxComments: 45 })); else if (n > 200) updateSettings((s) => ({ ...s, ehMaxComments: 200 })); }}
-                          style={{ width: '52px', padding: '5px 6px', fontSize: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#ccc', textAlign: 'center' }}
-                        />
-                      </label>
-                      <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                        排序方式
-                        <div style={{ width: '110px', flexShrink: 0 }}>
-                          <CustomSelect
-                            value={settings.ehSortMethod}
-                            options={[{ label: '分数', value: 'score' }, { label: '时间', value: 'time' }]}
-                            onChange={(v) => updateSettings((s) => ({ ...s, ehSortMethod: v }))}
-                            compact
-                          />
-                        </div>
-                      </label>
-                      <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                        排序方向
-                        <div style={{ width: '110px', flexShrink: 0 }}>
-                          <CustomSelect
-                            value={settings.ehSortOrder}
-                            options={[{ label: '倒序', value: 'desc' }, { label: '正序', value: 'asc' }]}
-                            onChange={(v) => updateSettings((s) => ({ ...s, ehSortOrder: v }))}
-                            compact
-                          />
-                        </div>
-                      </label>
-                    </>
-                  )}
-                </div>
-              </div>
             </div>
             </div>
           </div>
@@ -2927,6 +2893,17 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         cancelLabel="取消"
         onConfirm={confirmRemoveHistory}
         onCancel={() => setHistoryDeleteTarget(null)}
+      />
+      <ConfirmDialog
+        open={!!coverConfirmPage}
+        title="设为封面"
+        message={coverConfirmPage ? `将当前第 ${coverConfirmPage} 页设置为“${archive?.title || archiveId}”的封面？` : ''}
+        confirmLabel={coverSetting ? '设置中...' : '确认设置'}
+        cancelLabel="取消"
+        destructive={false}
+        confirmDisabled={coverSetting}
+        onConfirm={confirmSetCover}
+        onCancel={() => { if (!coverSetting) setCoverConfirmPage(0); }}
       />
 
     </div>

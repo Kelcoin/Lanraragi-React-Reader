@@ -4,19 +4,19 @@ import { lrrApi } from '../lib/api';
 import { getHistory, getHideRead, setHideRead, getCropCover, setCropCover, removeHistoryItem, loadHistoryState, hasRemoteHistory } from '../lib/history';
 import { loadTagDB, startTagDBUpdateTimer, stopTagDBUpdateTimer } from '../lib/tags';
 import { getWorkerUrl, setWorkerUrl, getSyncToken, setSyncToken, exportConfig, importConfig } from '../lib/worker-config';
-import { extractEhGalleryUrl, getEhCookie, getEhFavoriteDeleteSync, removeEhFavorite, setEhFavoriteDeleteSync } from '../lib/ehFavoriteSync';
+import { extractEhGalleryUrl, getEhCookie, getEhFavoriteDeleteSync, hasValidEhCookie, removeEhFavorite, setEhFavoriteDeleteSync } from '../lib/ehFavoriteSync';
 import ArchiveCard from '../components/ArchiveCard';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CustomSelect from '../components/CustomSelect';
 import TagSuggest from '../components/TagSuggest';
-import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
+import { HomeSectionGlyph, ThemeModeGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
 import { getStoredCategories, loadCategories, startCategoriesUpdateTimer, stopCategoriesUpdateTimer } from '../lib/categories';
 import { clearImageCache } from '../lib/imageCache';
 import { claimColdRestoreRoute, consumeHomeNavigationSnapshot, getBootState, loadHomeSnapshot, markBackground, saveHomeNavigationSnapshot, saveHomeSnapshot } from '../lib/sessionState';
 import { getStoredServerInfo, loadServerInfo } from '../lib/serverInfoCache';
 import { useHorizontalScroller } from '../lib/horizontalScroller';
-import { navigateHistory, navigateHome } from '../lib/navigation';
+import { navigateDeduplicate, navigateHistory, navigateHome } from '../lib/navigation';
 
 const FILTER_KEY = 'lrr_filter';
 const PRESETS_KEY = 'lrr_filter_presets';
@@ -294,6 +294,39 @@ const THEME_MODE_LABELS = {
   dark: '深色',
   light: '浅色',
 };
+const READER_SETTINGS_KEY = 'lrr_reader_settings';
+const DEFAULT_READER_EH_SETTINGS = {
+  ehEnabled: false,
+  ehCookie: '',
+  ehMinScore: 0,
+  ehMaxComments: 45,
+  ehSortMethod: 'score',
+  ehSortOrder: 'desc',
+};
+
+function readReaderSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(READER_SETTINGS_KEY) || '{}');
+    const standaloneCookie = (localStorage.getItem('lrr_eh_cookie') || '').trim();
+    const settings = saved && typeof saved === 'object' ? saved : {};
+    return {
+      ...DEFAULT_READER_EH_SETTINGS,
+      ...settings,
+      ehCookie: typeof settings.ehCookie === 'string' && settings.ehCookie.trim()
+        ? settings.ehCookie
+        : standaloneCookie,
+    };
+  } catch {
+    return { ...DEFAULT_READER_EH_SETTINGS };
+  }
+}
+
+function writeReaderSettings(settings) {
+  localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(settings));
+  const cookie = String(settings?.ehCookie || '').trim();
+  if (cookie) localStorage.setItem('lrr_eh_cookie', cookie);
+  else localStorage.removeItem('lrr_eh_cookie');
+}
 
 export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', onThemeModeChange }) {
   const [navSnapshot] = useState(() => consumeHomeNavigationSnapshot());
@@ -345,7 +378,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
 
   const [cfgWorkerUrl, setCfgWorkerUrl] = useState(getWorkerUrl());
   const [cfgSyncToken, setCfgSyncToken] = useState(getSyncToken());
-  const [workerConfigOpen, setWorkerConfigOpen] = useState(false);
+  const [readerSettings, setReaderSettings] = useState(readReaderSettings);
   const [randoms, setRandoms] = useState(() => {
     if (homeSnapshot && Array.isArray(homeSnapshot.randoms) && homeSnapshot.randoms.length > 0) {
       return homeSnapshot.randoms;
@@ -471,6 +504,20 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     saveCurrentHomeForNavigation();
     navigateHistory();
   }, [saveCurrentHomeForNavigation]);
+
+  const handleNavigateDeduplicate = useCallback(() => {
+    saveCurrentHomeForNavigation();
+    setShowConfig(false);
+    navigateDeduplicate();
+  }, [saveCurrentHomeForNavigation]);
+
+  const updateReaderSettings = useCallback((updater) => {
+    setReaderSettings((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      writeReaderSettings(next);
+      return next;
+    });
+  }, []);
 
   const handleOpenArchiveMenu = useCallback((archive, point, event, options = {}) => {
     if (archiveSelectionMode) return;
@@ -1042,15 +1089,42 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       randomsAutoFillBlockedRef.current
     ) return undefined;
 
-    const frame = requestAnimationFrame(() => {
+    let fillRequested = false;
+    let disposed = false;
+    const frames = [];
+    const timers = [];
+    const requestFillIfNeeded = () => {
+      if (disposed || fillRequested) return;
       const el = getRandomScrollerNode?.();
       if (!el) return;
       if (el.scrollWidth <= el.clientWidth + 8) {
+        fillRequested = true;
         fetchRandoms({ background: true, preferFresh: true, append: true });
       }
-    });
+    };
+    const scheduleCheck = (delayMs = 0) => {
+      const timer = setTimeout(() => {
+        const frame = requestAnimationFrame(requestFillIfNeeded);
+        frames.push(frame);
+      }, delayMs);
+      timers.push(timer);
+    };
 
-    return () => cancelAnimationFrame(frame);
+    [0, 80, 220, 520, 920, 1400].forEach(scheduleCheck);
+
+    const el = getRandomScrollerNode?.();
+    let observer = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => scheduleCheck(40));
+      observer.observe(el);
+    }
+
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      timers.forEach(clearTimeout);
+      frames.forEach(cancelAnimationFrame);
+    };
   }, [fetchRandoms, getRandomScrollerNode, randomCollapsed, randoms.length, randomsLoading, randomsRefreshing]);
 
   const displayArchives = useMemo(() => {
@@ -1299,13 +1373,28 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       return next;
     });
   }, []);
+
+  const ehFavoriteCookieValid = hasValidEhCookie(readerSettings.ehCookie || getEhCookie());
+
+  useEffect(() => {
+    if (!ehFavoriteCookieValid && ehFavoriteDeleteSync) {
+      setEhFavoriteDeleteSync(false);
+      setEhFavoriteDeleteSyncState(false);
+    }
+  }, [ehFavoriteCookieValid, ehFavoriteDeleteSync]);
+
   const handleToggleEhFavoriteDeleteSync = useCallback(() => {
+    if (!ehFavoriteCookieValid) {
+      setEhFavoriteDeleteSync(false);
+      setEhFavoriteDeleteSyncState(false);
+      return;
+    }
     setEhFavoriteDeleteSyncState(v => {
       const next = !v;
       setEhFavoriteDeleteSync(next);
       return next;
     });
-  }, []);
+  }, [ehFavoriteCookieValid]);
 
   const handleSyncHistory = useCallback(async () => {
     if (!getWorkerUrl() || !getSyncToken() || historySyncing) return;
@@ -1439,14 +1528,16 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             className="btn theme-mode-btn"
             type="button"
             onClick={onThemeModeChange}
-            style={{ fontSize: '13px' }}
-            title="切换浅色、深色或跟随系统"
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            title={`切换主题，当前为${THEME_MODE_LABELS[themeMode] || THEME_MODE_LABELS.auto}`}
+            aria-label={`当前主题：${THEME_MODE_LABELS[themeMode] || THEME_MODE_LABELS.auto}`}
           >
-            {THEME_MODE_LABELS[themeMode] || THEME_MODE_LABELS.auto}
+            <ThemeModeGlyph mode={themeMode} size={18} />
           </button>
           <button className="btn" onClick={() => {
             setCfgWorkerUrl(getWorkerUrl());
             setCfgSyncToken(getSyncToken());
+            setReaderSettings(readReaderSettings());
             setShowConfig(true);
           }} style={{ fontSize: '13px' }}>设置</button>
           <button className="btn" onClick={onLogout} style={{ fontSize: '13px' }}>退出</button>
@@ -1868,10 +1959,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           width: '100%', maxWidth: '420px',
         }}>
           <div style={{ textAlign: 'center', marginBottom: '4px' }}>
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '22px' }}>Worker 相关设置</h2>
-            <div style={{ fontSize: '12px', color: 'var(--text-sub)' }}>
-              配置 Worker 以启用 EH 评论代理与远端阅读历史
-            </div>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '22px' }}>设置</h2>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
@@ -1926,95 +2014,156 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             </button>
           </div>
 
+          <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '14px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 600, marginBottom: '10px', padding: '0 4px' }}>EH 评论区</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>启用 EH 评论区</span>
+                <button
+                  type="button"
+                  onClick={() => updateReaderSettings((s) => ({ ...s, ehEnabled: !s.ehEnabled }))}
+                  style={{
+                    width: '36px', height: '20px', borderRadius: '10px',
+                    background: readerSettings.ehEnabled ? 'var(--accent)' : 'rgba(255,255,255,0.2)',
+                    border: 'none', cursor: 'pointer', position: 'relative',
+                    transition: 'background 0.2s ease', flexShrink: 0,
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: '2px',
+                    left: readerSettings.ehEnabled ? '18px' : '2px',
+                    width: '16px', height: '16px', borderRadius: '50%',
+                    background: '#fff', transition: 'left 0.2s ease',
+                  }} />
+                </button>
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-sub)' }}>EH Cookie</label>
+                <input type="text" className="input-glass"
+                  value={readerSettings.ehCookie || ''}
+                  onChange={(e) => updateReaderSettings((s) => ({ ...s, ehCookie: e.target.value }))}
+                  placeholder="igneous=...; ipb_member_id=...; ipb_pass_hash=..."
+                  style={{ padding: '8px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+              {readerSettings.ehEnabled && (
+                <>
+                  <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>最低展示分数</span>
+                    <input type="text" inputMode="numeric" pattern="-?[0-9]*" className="input-glass no-spinner"
+                      value={String(readerSettings.ehMinScore)}
+                      onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= -999) updateReaderSettings((s) => ({ ...s, ehMinScore: n })); else if (v === '' || v === '-') updateReaderSettings((s) => ({ ...s, ehMinScore: 0 })); }}
+                      onBlur={() => { const n = parseInt(readerSettings.ehMinScore, 10); if (isNaN(n)) updateReaderSettings((s) => ({ ...s, ehMinScore: 0 })); }}
+                      style={{ width: '52px', padding: '5px 6px', fontSize: '12px', textAlign: 'center' }}
+                    />
+                  </label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>最多展示数量</span>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" className="input-glass no-spinner"
+                      value={String(readerSettings.ehMaxComments)}
+                      onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= 1 && n <= 200) updateReaderSettings((s) => ({ ...s, ehMaxComments: n })); }}
+                      onBlur={() => { const n = parseInt(readerSettings.ehMaxComments, 10); if (isNaN(n) || n < 1) updateReaderSettings((s) => ({ ...s, ehMaxComments: 45 })); else if (n > 200) updateReaderSettings((s) => ({ ...s, ehMaxComments: 200 })); }}
+                      style={{ width: '52px', padding: '5px 6px', fontSize: '12px', textAlign: 'center' }}
+                    />
+                  </label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                    排序方式
+                    <div style={{ width: '110px', flexShrink: 0 }}>
+                      <CustomSelect
+                        value={readerSettings.ehSortMethod}
+                        options={[{ label: '分数', value: 'score' }, { label: '时间', value: 'time' }]}
+                        onChange={(v) => updateReaderSettings((s) => ({ ...s, ehSortMethod: v }))}
+                        compact
+                      />
+                    </div>
+                  </label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                    排序方向
+                    <div style={{ width: '110px', flexShrink: 0 }}>
+                      <CustomSelect
+                        value={readerSettings.ehSortOrder}
+                        options={[{ label: '倒序', value: 'desc' }, { label: '正序', value: 'asc' }]}
+                        onChange={(v) => updateReaderSettings((s) => ({ ...s, ehSortOrder: v }))}
+                        compact
+                      />
+                    </div>
+                  </label>
+                </>
+              )}
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
             <div style={{ paddingRight: '16px' }}>
               <div style={{ fontSize: '13px' }}>同步删除 E 站收藏夹</div>
               <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '2px', lineHeight: 1.5 }}>
-                启用后删除归档时，会用 EH Cookie 通过 Worker 将元数据 source 中的 EH/EX 画廊从收藏夹移除
+                启用后删除归档时，会通过 Worker 同步移除元数据 source 中的 EH/EX 收藏；需配置 Worker、访问 Token 与合法 EH Cookie，未配置合法 Cookie 时会保持关闭。
               </div>
             </div>
             <button
               type="button"
               onClick={handleToggleEhFavoriteDeleteSync}
+              disabled={!ehFavoriteCookieValid}
               style={{
                 width: '36px', height: '20px', borderRadius: '10px',
-                background: ehFavoriteDeleteSync ? 'var(--accent)' : 'rgba(255,255,255,0.2)',
-                border: 'none', cursor: 'pointer', position: 'relative',
-                transition: 'background 0.2s ease', flexShrink: 0,
+                background: ehFavoriteDeleteSync && ehFavoriteCookieValid ? 'var(--accent)' : 'rgba(255,255,255,0.2)',
+                border: 'none', cursor: ehFavoriteCookieValid ? 'pointer' : 'not-allowed', position: 'relative',
+                transition: 'background 0.2s ease', flexShrink: 0, opacity: ehFavoriteCookieValid ? 1 : 0.48,
               }}
-              title="需要配置 Worker、访问 Token 与阅读器内的 EH Cookie"
+              title={ehFavoriteCookieValid ? '删除归档时同步删除 E 站收藏夹' : '需要先配置包含 ipb_member_id 与 ipb_pass_hash 的合法 EH Cookie'}
             >
               <span style={{
                 position: 'absolute', top: '2px',
-                left: ehFavoriteDeleteSync ? '18px' : '2px',
+                left: ehFavoriteDeleteSync && ehFavoriteCookieValid ? '18px' : '2px',
                 width: '16px', height: '16px', borderRadius: '50%',
                 background: '#fff', transition: 'left 0.2s ease',
               }} />
             </button>
           </div>
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
-            <button
-              type="button"
-              onClick={() => setWorkerConfigOpen(v => !v)}
-              title={workerConfigOpen ? '收起 Worker 设置' : '展开 Worker 设置'}
-              style={{
-                width: '100%',
-                padding: '0 4px',
-                fontSize: '13px',
-                color: 'var(--text-sub)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <span>Worker 设置</span>
-              <span style={{ color: 'var(--text-sub)', opacity: 0.8, padding: '4px', display: 'flex' }}>
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style={{ transition: 'transform 0.3s', transform: workerConfigOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}>
-                  <path d="M6 15l6-6 6 6z" />
-                </svg>
-              </span>
-            </button>
-            <div style={{
-              overflow: 'hidden',
-              maxHeight: workerConfigOpen ? '280px' : '0px',
-              opacity: workerConfigOpen ? 1 : 0,
-              transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: 'var(--text-sub)' }}>
-                    Cloudflare Worker 端点
-                  </label>
-                  <input type="text" className="input-glass"
-                    value={cfgWorkerUrl}
-                    onChange={(e) => setCfgWorkerUrl(e.target.value)}
-                    placeholder="https://lrr-sync.xxx.workers.dev"
-                    style={{ padding: '8px 12px', fontSize: '13px' }}
-                  />
-                  <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '4px', lineHeight: 1.5 }}>
-                    用于 EH 评论代理与远端阅读历史
-                  </div>
-                </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: 'var(--text-sub)' }}>
-                    访问 Token
-                  </label>
-                  <input type="password" className="input-glass"
-                    value={cfgSyncToken}
-                    onChange={(e) => setCfgSyncToken(e.target.value)}
-                    placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致"
-                    style={{ padding: '8px 12px', fontSize: '13px' }}
-                  />
-                  <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '4px', lineHeight: 1.5 }}>
-                    同一 Token 的所有设备将自动共享阅读历史与隐藏已读完状态，Token 必须手动配置在 KV 空间的 tokens 字段中。
-                  </div>
+          <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '14px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '12px', padding: '0 4px' }}>Worker 设置</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: 'var(--text-sub)' }}>
+                  Cloudflare Worker 端点
+                </label>
+                <input type="text" className="input-glass"
+                  value={cfgWorkerUrl}
+                  onChange={(e) => setCfgWorkerUrl(e.target.value)}
+                  placeholder="https://lrr-sync.xxx.workers.dev"
+                  style={{ padding: '8px 12px', fontSize: '13px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: 'var(--text-sub)' }}>
+                  访问 Token
+                </label>
+                <input type="password" className="input-glass"
+                  value={cfgSyncToken}
+                  onChange={(e) => setCfgSyncToken(e.target.value)}
+                  placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致"
+                  style={{ padding: '8px 12px', fontSize: '13px' }}
+                />
+                <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '4px', lineHeight: 1.5 }}>
+                  同一 Token 的所有设备将自动共享阅读历史与隐藏已读完状态，Token 必须手动配置在 KV 空间的 tokens 字段中。
                 </div>
               </div>
             </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '14px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '10px', padding: '0 4px' }}>工具</div>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleNavigateDeduplicate}
+              style={{ width: '100%', padding: '10px', fontSize: '13px' }}
+            >
+              打开重复归档检测
+            </button>
+            <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '14px' }} />
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -2038,6 +2187,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                   const count = importConfig(encoded);
                   setCfgWorkerUrl(getWorkerUrl());
                   setCfgSyncToken(getSyncToken());
+                  setReaderSettings(readReaderSettings());
                   setEhFavoriteDeleteSyncState(getEhFavoriteDeleteSync());
                   alert(`已导入 ${count} 项配置`);
                 } catch (e) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Reader from './pages/Reader';
 import Home from './pages/Home';
 import HistoryPage from './pages/HistoryPage';
+import DeduplicatePage from './pages/DeduplicatePage';
 import { loadTagDB } from './lib/tags';
 import { checkServerStatus } from './lib/api';
 import { navigateHome, navigateToArchive, parseRouteFromLocation } from './lib/navigation';
@@ -33,7 +34,6 @@ export default function App() {
 
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
-  const [workerConfigOpen, setWorkerConfigOpen] = useState(false);
   
   useEffect(() => {
     loadTagDB(); 
@@ -150,50 +150,17 @@ export default function App() {
               <input type="password" className="input-glass" placeholder="在 LRR 设置页面获取" value={tempConfig.key} onChange={e => setTempConfig({...tempConfig, key: e.target.value})} required />
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
-              <button
-                type="button"
-                onClick={() => setWorkerConfigOpen(v => !v)}
-                title={workerConfigOpen ? '收起Worker设置' : '展开Worker设置'}
-                style={{
-                  width: '100%',
-                  padding: '0 4px',
-                  fontSize: '13px',
-                  color: 'var(--text-sub)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>Worker 相关设置</span>
-                <span style={{ color: '#ccc', opacity: 0.8, padding: '4px', display: 'flex' }}>
-                  <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style={{ transition: 'transform 0.3s', transform: workerConfigOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}>
-                    <path d="M6 15l6-6 6 6z" />
-                  </svg>
-                </span>
-              </button>
-              <div style={{
-                overflow: 'hidden',
-                maxHeight: workerConfigOpen ? '230px' : '0px',
-                opacity: workerConfigOpen ? 1 : 0,
-                transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease',
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '14px' }}>
-                  <div>
-                    <label className="field-label">Cloudflare Worker 端点</label>
-                    <input type="text" className="input-glass" placeholder="https://lrr-sync.xxx.workers.dev" value={tempConfig.workerUrl} onChange={e => setTempConfig({...tempConfig, workerUrl: e.target.value})} />
-                    <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '5px', lineHeight: 1.5 }}>
-                      用于 EH 评论代理与远端阅读历史
-                    </div>
-                  </div>
+            <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '14px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '12px', padding: '0 4px' }}>Worker 设置</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label className="field-label">Cloudflare Worker 端点</label>
+                  <input type="text" className="input-glass" placeholder="https://lrr-sync.xxx.workers.dev" value={tempConfig.workerUrl} onChange={e => setTempConfig({...tempConfig, workerUrl: e.target.value})} />
+                </div>
 
-                  <div>
-                    <label className="field-label">访问 Token</label>
-                    <input type="password" className="input-glass" placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
-                  </div>
+                <div>
+                  <label className="field-label">访问 Token</label>
+                  <input type="password" className="input-glass" placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
                 </div>
               </div>
             </div>
@@ -240,6 +207,15 @@ export default function App() {
     return (
       <>
         <HistoryPage onSelectArchive={(id) => navigateToArchive(id)} onBack={() => navigateHome()} />
+        <PwaStatus />
+      </>
+    );
+  }
+
+  if (route.kind === 'dedupe') {
+    return (
+      <>
+        <DeduplicatePage onBack={() => navigateHome()} />
         <PwaStatus />
       </>
     );

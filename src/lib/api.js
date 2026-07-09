@@ -58,6 +58,8 @@ export const lrrApi = {
   getArchive: (id) => request(`/archives/${id}/metadata`),
   getArchiveFiles: (id) => request(`/archives/${id}/files`),
   deleteArchive: (id) => request(`/archives/${encodeURIComponent(id)}`, 'DELETE'),
+  setArchiveThumbnail: (id, page) =>
+    request(`/archives/${encodeURIComponent(id)}/thumbnail?page=${encodeURIComponent(page)}`, 'PUT'),
   downloadArchive: async (id) => {
     const res = await fetch(getApiUrl(`/archives/${encodeURIComponent(id)}/download`), {
       headers: getAuthHeaders(),
@@ -73,20 +75,23 @@ export const lrrApi = {
       : `${id}.zip`;
     return { blob: await res.blob(), filename };
   },
-  getArchiveThumbnail: async (id, { page = 1, noFallback = false } = {}) => {
+  getArchiveThumbnail: async (id, { page = null, noFallback = false } = {}) => {
     const base = getBaseUrl();
     if (!base) throw new Error('未配置服务器地址');
 
     const params = new URLSearchParams();
-    if (page > 0) params.set('page', String(page));
+    if (page !== undefined && page !== null) params.set('page', String(page));
     if (noFallback) params.set('no_fallback', 'true');
 
-    const res = await fetch(`${base}/api/archives/${id}/thumbnail?${params.toString()}`, {
+    const query = params.toString();
+    const res = await fetch(`${base}/api/archives/${encodeURIComponent(id)}/thumbnail${query ? `?${query}` : ''}`, {
       headers: getAuthHeaders(),
     });
 
     if (res.status === 202) {
-      return { status: 202, blob: null };
+      let job = null;
+      try { job = await res.json(); } catch {}
+      return { status: 202, blob: null, job };
     }
     if (!res.ok) {
       if (res.status === 401) throw createApiError(res.status, 'API Error: 401 (API Key 错误或未授权)');
@@ -94,6 +99,8 @@ export const lrrApi = {
     }
     return { status: res.status, blob: await res.blob() };
   },
+  regenerateThumbnails: (force = false) => request(`/regen_thumbs?force=${force ? 1 : 0}`, 'POST'),
+  getMinionStatus: (job) => request(`/minion/${encodeURIComponent(job)}`),
   queueArchivePageThumbnails: (id, force = false) =>
     request(`/archives/${id}/files/thumbnails${force ? '?force=true' : ''}`, 'POST'),
   extractArchive: (id) => request(`/archives/${id}/extract`, 'POST'),

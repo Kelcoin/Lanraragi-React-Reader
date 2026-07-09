@@ -14,6 +14,9 @@ export function parseRouteFromLocation() {
   if (view === 'history') {
     return { kind: 'history' };
   }
+  if (view === 'dedupe') {
+    return { kind: 'dedupe' };
+  }
 
   return { kind: 'home', query: query || '' };
 }
@@ -42,4 +45,11 @@ export function navigateHistory({ replace = false } = {}) {
   if (replace) window.history.replaceState({}, '', url);
   else window.history.pushState({}, '', url);
   dispatchRouteChange({ kind: 'history' });
+}
+
+export function navigateDeduplicate({ replace = false } = {}) {
+  const url = '/?view=dedupe';
+  if (replace) window.history.replaceState({}, '', url);
+  else window.history.pushState({}, '', url);
+  dispatchRouteChange({ kind: 'dedupe' });
 }
