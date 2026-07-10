@@ -34,9 +34,12 @@ function MenuButton({ children, danger = false, onClick }) {
   );
 }
 
-export default function ArchiveContextMenu({ menu, onClose, onRead, onDownload, onDelete, onCopyLink, onRemoveHistory }) {
+export default function ArchiveContextMenu({ menu, onClose, onRead, onDownload, onDelete, onCopyLink, onRemoveHistory, onAddWatchlist, onRemoveWatchlist }) {
   const showRemoveHistory = !!menu?.showRemoveHistory && !!onRemoveHistory;
-  const menuHeight = showRemoveHistory ? 214 : 178;
+  const showRemoveWatchlist = !!menu?.showRemoveWatchlist && !!onRemoveWatchlist;
+  const showAddWatchlist = !showRemoveWatchlist && !!onAddWatchlist;
+  const extraRows = (showRemoveHistory ? 1 : 0) + (showRemoveWatchlist || showAddWatchlist ? 1 : 0) + (onDelete ? 1 : 0);
+  const menuHeight = 142 + extraRows * 36;
   const pos = useMemo(() => clampMenuPosition(menu?.x || 0, menu?.y || 0, menuHeight), [menu?.x, menu?.y, menuHeight]);
 
   useEffect(() => {
@@ -88,9 +91,11 @@ export default function ArchiveContextMenu({ menu, onClose, onRead, onDownload, 
       <MenuButton onClick={run(onRead)}>阅读</MenuButton>
       <MenuButton onClick={run(onDownload)}>下载</MenuButton>
       <MenuButton onClick={run(onCopyLink)}>复制链接</MenuButton>
+      {showAddWatchlist && <MenuButton onClick={run(onAddWatchlist)}>加入待看</MenuButton>}
+      {showRemoveWatchlist && <MenuButton danger onClick={run(onRemoveWatchlist)}>取消待看</MenuButton>}
       {showRemoveHistory && <MenuButton danger onClick={run(onRemoveHistory)}>删除历史记录</MenuButton>}
-      <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 2px' }} />
-      <MenuButton danger onClick={run(onDelete)}>删除</MenuButton>
+      {onDelete && <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 2px' }} />}
+      {onDelete && <MenuButton danger onClick={run(onDelete)}>删除</MenuButton>}
     </div>,
     document.body,
   );

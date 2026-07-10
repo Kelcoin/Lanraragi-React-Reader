@@ -787,13 +787,15 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
               <div key={group.ns} style={{ marginBottom: '8px' }}>
                 <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '3px', alignItems: 'baseline' }}>
                   <span
+                    className="archive-tag-namespace"
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
                       fontSize: '11px',
                       fontWeight: 600,
-                      color: group.color,
+                      '--tag-ns-color': group.color,
+                      color: 'var(--tag-ns-color)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
                       marginRight: '5px',
@@ -801,7 +803,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <NamespaceGlyph ns={group.ns} size={14} color={group.color} />
+                    <NamespaceGlyph ns={group.ns} size={14} color="currentColor" />
                     {stripDecoratedLabel(group.label)}
                   </span>
                   {group.tags.map(({ raw }) => (

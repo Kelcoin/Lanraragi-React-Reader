@@ -11,11 +11,11 @@ const NAMESPACE_LABELS = {
   source: '🔗 来源', general: '🏷️ 通用'
 };
 const NAMESPACE_COLORS = {
-  artist: '#f0ad4e', parody: '#5bc0de', category: '#a0e7e5', character: '#a5dc86',
-  female: '#f27474', male: '#74b9ff', mixed: '#f8b500', other: '#b2bec3',
-  group: '#a29bfe', series: '#fd79a8', language: '#55efc4', uploader: '#7ec8e3',
-  date_added: '#8899aa', timestamp: '#8899aa',
-  source: '#7ec8e3', general: '#b2bec3'
+  artist: '#e0994c', parody: '#5aa9d4', category: '#7ec7c5', character: '#8ec274',
+  female: '#de7680', male: '#72a3db', mixed: '#d6aa38', other: '#a5afb4',
+  group: '#948cd9', series: '#e0759e', language: '#64c9a9', uploader: '#78afc4',
+  date_added: '#8c9baa', timestamp: '#8c9baa',
+  source: '#78afc4', general: '#a5afb4'
 };
 
 const NS_CN_MAP = {

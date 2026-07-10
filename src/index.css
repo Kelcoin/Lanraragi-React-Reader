@@ -37,39 +37,39 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg-color: #e7edf2;
+  --bg-color: #f4f7fa;
   --page-bg:
-    radial-gradient(circle at 18% -12%, rgba(82, 133, 185, 0.11), transparent 30rem),
-    radial-gradient(circle at 92% -4%, rgba(82, 148, 132, 0.08), transparent 28rem),
-    linear-gradient(180deg, #edf2f6 0%, #e5ebf1 52%, #dde5ec 100%);
-  --surface-1: rgba(234, 241, 247, 0.76);
-  --surface-2: rgba(224, 233, 241, 0.72);
-  --surface-3: rgba(205, 217, 229, 0.66);
-  --glass-bg: linear-gradient(180deg, rgba(236, 243, 248, 0.72), rgba(218, 228, 238, 0.64));
-  --glass-border: rgba(88, 110, 135, 0.22);
-  --glass-border-hover: rgba(67, 98, 130, 0.32);
-  --accent: #2f75b8;
-  --accent-strong: #255f96;
-  --accent-soft: rgba(47, 117, 184, 0.11);
-  --good: #2f835a;
-  --danger: #b84b5a;
-  --text-main: #243144;
-  --text-sub: #667586;
-  --text-muted: #83909e;
-  --shadow: 0 16px 42px rgba(48, 66, 86, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  --shadow-soft: 0 9px 24px rgba(48, 66, 86, 0.11);
-  --button-bg: linear-gradient(180deg, rgba(247,250,252,0.72), rgba(229,237,244,0.64));
-  --button-hover-bg: linear-gradient(180deg, #78a7c8, #628ead);
-  --button-shadow: 0 1px 0 rgba(255,255,255,0.52) inset, 0 8px 16px rgba(50, 89, 130, 0.06);
-  --input-bg: rgba(244, 248, 251, 0.55);
-  --input-focus-bg: rgba(247, 250, 252, 0.78);
-  --placeholder: rgba(102, 117, 134, 0.52);
-  --card-bg: linear-gradient(180deg, rgba(218, 228, 238, 0.76), rgba(202, 215, 228, 0.78));
-  --cover-bg: rgba(198, 211, 224, 0.58);
-  --toolbar-bg: rgba(237, 242, 246, 0.9);
-  --dropdown-bg: linear-gradient(180deg, rgba(247,250,252,0.94), rgba(229,237,244,0.94));
-  --scrollbar-thumb: rgba(95, 116, 139, 0.3);
-  --scrollbar-thumb-hover: rgba(72, 96, 120, 0.44);
+    radial-gradient(circle at 18% -12%, rgba(46, 110, 224, 0.05), transparent 30rem),
+    radial-gradient(circle at 92% -4%, rgba(47, 131, 90, 0.04), transparent 28rem),
+    linear-gradient(180deg, #f7f9fb 0%, #f3f6f9 52%, #eef1f5 100%);
+  --surface-1: rgba(255, 255, 255, 0.85);
+  --surface-2: rgba(242, 246, 250, 0.75);
+  --surface-3: rgba(228, 235, 242, 0.7);
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(244, 247, 251, 0.6));
+  --glass-border: rgba(100, 125, 150, 0.14);
+  --glass-border-hover: rgba(46, 110, 224, 0.25);
+  --accent: #2e6ee0;
+  --accent-strong: #1f54b5;
+  --accent-soft: rgba(46, 110, 224, 0.08);
+  --good: #28a76a;
+  --danger: #dd4c5f;
+  --text-main: #1a2536;
+  --text-sub: #58687e;
+  --text-muted: #8e9cb0;
+  --shadow: 0 18px 46px rgba(26, 38, 56, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-soft: 0 10px 28px rgba(26, 38, 56, 0.07);
+  --button-bg: linear-gradient(180deg, rgba(255,255,255,0.8), rgba(238,244,250,0.65));
+  --button-hover-bg: linear-gradient(180deg, #4a83e6, #2e6ee0);
+  --button-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 8px 16px rgba(46, 110, 224, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.6);
+  --input-focus-bg: rgba(255, 255, 255, 0.9);
+  --placeholder: rgba(142, 156, 176, 0.55);
+  --card-bg: linear-gradient(180deg, rgba(232, 240, 248, 0.7), rgba(218, 228, 238, 0.75));
+  --cover-bg: rgba(215, 225, 235, 0.5);
+  --toolbar-bg: rgba(245, 248, 251, 0.92);
+  --dropdown-bg: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(243,247,251,0.96));
+  --scrollbar-thumb: rgba(120, 138, 160, 0.25);
+  --scrollbar-thumb-hover: rgba(100, 120, 145, 0.45);
 }
 
 * {
@@ -140,6 +140,11 @@ textarea:focus-visible,
   border-color: var(--glass-border-hover);
 }
 
+:root[data-theme="light"] .glass-panel {
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -192,9 +197,9 @@ textarea:focus-visible,
 
 :root[data-theme="light"] .btn:hover:not(:disabled) {
   background: var(--button-hover-bg);
-  border-color: rgba(77, 117, 148, 0.58);
+  border-color: rgba(46, 110, 224, 0.3);
   color: #f7fbff;
-  box-shadow: 0 10px 22px rgba(82, 124, 154, 0.2), inset 0 1px 0 rgba(255,255,255,0.22);
+  box-shadow: 0 10px 22px rgba(46, 110, 224, 0.12), inset 0 1px 0 rgba(255,255,255,0.5);
 }
 .btn:active:not(:disabled) { transform: translateY(0); }
 .btn:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
@@ -216,6 +221,18 @@ textarea:focus-visible,
   background: var(--input-focus-bg);
   border-color: rgba(141, 216, 255, 0.72);
   box-shadow: 0 0 0 3px rgba(88, 183, 255, 0.18), inset 0 1px 0 rgba(255,255,255,0.045);
+}
+
+:root[data-theme="light"] button:focus-visible,
+:root[data-theme="light"] input:focus-visible,
+:root[data-theme="light"] textarea:focus-visible,
+:root[data-theme="light"] [role="button"]:focus-visible {
+  outline-color: rgba(46, 110, 224, 0.55);
+}
+
+:root[data-theme="light"] .input-glass:focus {
+  border-color: rgba(46, 110, 224, 0.55);
+  box-shadow: 0 0 0 3px rgba(46, 110, 224, 0.1), inset 0 1px 0 rgba(255,255,255,0.55);
 }
 
 .dedupe-date-input {
@@ -245,6 +262,11 @@ textarea:focus-visible,
   box-shadow: 0 0 0 3px rgba(88, 183, 255, 0.16), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
+:root[data-theme="light"] .dedupe-date-input:focus {
+  border-color: rgba(46, 110, 224, 0.55);
+  box-shadow: 0 0 0 3px rgba(46, 110, 224, 0.1), inset 0 1px 0 rgba(255,255,255,0.55);
+}
+
 .dedupe-date-input::-webkit-calendar-picker-indicator {
   border-radius: 7px;
   padding: 4px;
@@ -256,6 +278,10 @@ textarea:focus-visible,
 .dedupe-date-input::-webkit-calendar-picker-indicator:hover {
   background: rgba(141, 216, 255, 0.16);
   opacity: 1;
+}
+
+:root[data-theme="light"] .dedupe-date-input::-webkit-calendar-picker-indicator:hover {
+  background: rgba(46, 110, 224, 0.1);
 }
 
 /* 涓嬫媺鑿滃崟涓� UI 寮瑰嚭鍔ㄧ敾 */
@@ -432,11 +458,24 @@ textarea:focus-visible,
 
 :root[data-theme="light"] .archive-card-shell {
   border-color: rgba(75, 99, 126, 0.2);
-  box-shadow: 0 8px 18px rgba(48, 66, 86, 0.1), inset 0 1px 0 rgba(255,255,255,0.24);
+  box-shadow: 0 4px 12px rgba(26, 38, 56, 0.06), inset 0 1px 0 rgba(255,255,255,0.5);
 }
 
 .archive-card-shell:hover {
   border-color: rgba(141, 216, 255, 0.36);
+}
+
+.watchlist-card .archive-card-shell {
+  border-color: rgba(240, 193, 95, 0.32);
+  outline: 1px solid rgba(240, 193, 95, 0.16);
+  outline-offset: 2px;
+  box-shadow: 0 0 18px rgba(240, 193, 95, 0.12), var(--shadow);
+}
+
+:root[data-theme="light"] .watchlist-card .archive-card-shell {
+  border-color: rgba(217, 147, 54, 0.24);
+  outline-color: rgba(217, 147, 54, 0.14);
+  box-shadow: 0 0 16px rgba(217, 147, 54, 0.08), 0 4px 12px rgba(26, 38, 56, 0.06), inset 0 1px 0 rgba(255,255,255,0.5);
 }
 
 .archive-cover-frame {
@@ -447,6 +486,10 @@ textarea:focus-visible,
 .archive-title {
   color: var(--text-main);
   font-weight: 650;
+}
+
+:root[data-theme="light"] .archive-tag-namespace {
+  color: color-mix(in srgb, var(--tag-ns-color) 68%, var(--text-main)) !important;
 }
 
 .reader-toolbar {
@@ -462,6 +505,10 @@ textarea:focus-visible,
   padding: 0;
 }
 
+.settings-panel-scroll {
+  scrollbar-gutter: stable;
+}
+
 @media (max-width: 560px) {
   .login-shell {
     padding: 16px;
@@ -474,5 +521,10 @@ textarea:focus-visible,
 
   .login-title {
     font-size: 23px;
+  }
+
+  .settings-panel-scroll {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
   }
 }

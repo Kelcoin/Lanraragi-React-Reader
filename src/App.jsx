@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Reader from './pages/Reader';
 import Home from './pages/Home';
 import HistoryPage from './pages/HistoryPage';
+import WatchlistPage from './pages/WatchlistPage';
 import DeduplicatePage from './pages/DeduplicatePage';
 import { loadTagDB } from './lib/tags';
 import { checkServerStatus } from './lib/api';
@@ -207,6 +208,15 @@ export default function App() {
     return (
       <>
         <HistoryPage onSelectArchive={(id) => navigateToArchive(id)} onBack={() => navigateHome()} />
+        <PwaStatus />
+      </>
+    );
+  }
+
+  if (route.kind === 'watchlist') {
+    return (
+      <>
+        <WatchlistPage onSelectArchive={(id) => navigateToArchive(id)} onBack={() => navigateHome()} />
         <PwaStatus />
       </>
     );

@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TagSuggest from '../components/TagSuggest';
 import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
 import { getCropCover, getHideRead, getHistory, hasRemoteHistory, loadHistoryState, removeHistoryItems, setHideRead } from '../lib/history';
 import { runHistoryExistenceCheck } from '../lib/historyMaintenance';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
+import { archiveMatchesSearch, replaceCurrentArchiveSearchToken } from '../lib/archiveSearch';
 
 function HeaderGlyph() {
   return <HomeSectionGlyph name="continue" size={24} color={getSectionGlyphColor('continue')} />;
@@ -76,6 +78,9 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
   const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [isNarrow, setIsNarrow] = useState(window.innerWidth < 600);
+  const [query, setQuery] = useState('');
+  const suggestActiveRef = useRef(false);
+  const searchBoxRef = useRef(null);
 
   useEffect(() => {
     if (hasRemoteHistory()) {
@@ -109,7 +114,11 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
     return history.filter((h) => !(h.total > 0 && h.page >= h.total));
   }, [history, hideRead]);
 
-  const groupedHistory = useMemo(() => groupHistoryByPeriod(filteredHistory), [filteredHistory]);
+  const searchedHistory = useMemo(() => (
+    filteredHistory.filter((item) => archiveMatchesSearch(item, query))
+  ), [filteredHistory, query]);
+
+  const groupedHistory = useMemo(() => groupHistoryByPeriod(searchedHistory), [searchedHistory]);
 
   const selectedCount = selectedIds.size;
 
@@ -155,12 +164,18 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
     }
   }, [checking]);
 
+  const handleTagSelect = useCallback((tag) => {
+    suggestActiveRef.current = false;
+    setQuery((value) => replaceCurrentArchiveSearchToken(value, tag));
+    setTimeout(() => searchBoxRef.current?.querySelector('input')?.focus(), 50);
+  }, []);
+
   const toggleSelection = useCallback((id, event) => {
     if (!id) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (event?.shiftKey && lastSelectedId) {
-        const ids = filteredHistory.map((item) => item.id);
+        const ids = searchedHistory.map((item) => item.id);
         const from = ids.indexOf(lastSelectedId);
         const to = ids.indexOf(id);
         if (from >= 0 && to >= 0) {
@@ -177,12 +192,12 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
       return next;
     });
     setLastSelectedId(id);
-  }, [filteredHistory, lastSelectedId]);
+  }, [lastSelectedId, searchedHistory]);
 
   const selectAllVisible = useCallback(() => {
-    setSelectedIds(new Set(filteredHistory.map((item) => item.id)));
-    setLastSelectedId(filteredHistory[0]?.id || null);
-  }, [filteredHistory]);
+    setSelectedIds(new Set(searchedHistory.map((item) => item.id)));
+    setLastSelectedId(searchedHistory[0]?.id || null);
+  }, [searchedHistory]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
@@ -220,7 +235,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
               阅读历史
             </h1>
             <div style={{ color: 'var(--text-sub)', fontSize: '14px' }}>
-              共 {history.length} 条记录{hideRead ? `，当前显示 ${filteredHistory.length} 条` : ''}
+              共 {history.length} 条记录{hideRead ? `，当前显示 ${filteredHistory.length} 条` : ''}{query.trim() ? `，搜索结果 ${searchedHistory.length} 条` : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -254,10 +269,10 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
                   <button className="btn" onClick={clearSelection} style={{ padding: '6px 12px', fontSize: '12px' }}>取消选择</button>
                 </>
               )}
-              {selectionMode && selectedCount === 0 && filteredHistory.length > 0 && (
+              {selectionMode && selectedCount === 0 && searchedHistory.length > 0 && (
                 <button className="btn" onClick={selectAllVisible} style={{ padding: '6px 12px', fontSize: '12px' }}>全选当前</button>
               )}
-              {filteredHistory.length > 0 && (
+              {searchedHistory.length > 0 && (
                 <button
                   className="btn"
                   onClick={toggleSelectionMode}
@@ -303,7 +318,32 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
             </div>
           </div>
 
-          {filteredHistory.length > 0 ? (
+          <div ref={searchBoxRef} style={{ position: 'relative', maxWidth: '680px', marginBottom: '18px' }}>
+            <input
+              className="input-glass"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !suggestActiveRef.current) event.currentTarget.blur();
+              }}
+              placeholder="在阅读历史中搜索标题或标签"
+              style={{ padding: '10px 38px 10px 12px', fontSize: '14px' }}
+            />
+            {query && (
+              <button
+                type="button"
+                className="input-clear-btn"
+                onClick={() => setQuery('')}
+                style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)' }}
+                aria-label="清空搜索"
+              >
+                ×
+              </button>
+            )}
+            <TagSuggest inputValue={query} onSelectTag={handleTagSelect} containerRef={searchBoxRef} onSetActive={(active) => { suggestActiveRef.current = active; }} />
+          </div>
+
+          {searchedHistory.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: isNarrow ? '22px' : '28px' }}>
               {groupedHistory.map((group) => (
                 <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: isNarrow ? '12px' : '16px' }}>
@@ -382,7 +422,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-sub)', fontSize: '14px' }}>
-              {hideRead && history.length > 0 ? '所有归档均已读完' : '暂无阅读历史'}
+              {query.trim() ? '没有匹配的阅读历史' : (hideRead && history.length > 0 ? '所有归档均已读完' : '暂无阅读历史')}
             </div>
           )}
         </section>

@@ -14,6 +14,9 @@ export function parseRouteFromLocation() {
   if (view === 'history') {
     return { kind: 'history' };
   }
+  if (view === 'watchlist') {
+    return { kind: 'watchlist' };
+  }
   if (view === 'dedupe') {
     return { kind: 'dedupe' };
   }
@@ -45,6 +48,13 @@ export function navigateHistory({ replace = false } = {}) {
   if (replace) window.history.replaceState({}, '', url);
   else window.history.pushState({}, '', url);
   dispatchRouteChange({ kind: 'history' });
+}
+
+export function navigateWatchlist({ replace = false } = {}) {
+  const url = '/?view=watchlist';
+  if (replace) window.history.replaceState({}, '', url);
+  else window.history.pushState({}, '', url);
+  dispatchRouteChange({ kind: 'watchlist' });
 }
 
 export function navigateDeduplicate({ replace = false } = {}) {

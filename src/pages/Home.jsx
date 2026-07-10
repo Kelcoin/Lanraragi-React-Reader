@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { lrrApi } from '../lib/api';
 import { getHistory, getHideRead, setHideRead, getCropCover, setCropCover, removeHistoryItem, loadHistoryState, hasRemoteHistory } from '../lib/history';
+import { addWatchlistItem, getWatchlist, hasRemoteWatchlist, loadWatchlistState, removeWatchlistItem, removeWatchlistItems } from '../lib/watchlist';
 import { loadTagDB, startTagDBUpdateTimer, stopTagDBUpdateTimer } from '../lib/tags';
 import { getWorkerUrl, setWorkerUrl, getSyncToken, setSyncToken, exportConfig, importConfig } from '../lib/worker-config';
+import { runHistoryExistenceCheck } from '../lib/historyMaintenance';
 import { extractEhGalleryUrl, getEhCookie, getEhFavoriteDeleteSync, hasValidEhCookie, removeEhFavorite, setEhFavoriteDeleteSync } from '../lib/ehFavoriteSync';
 import ArchiveCard from '../components/ArchiveCard';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
@@ -16,12 +18,13 @@ import { clearImageCache } from '../lib/imageCache';
 import { claimColdRestoreRoute, consumeHomeNavigationSnapshot, getBootState, loadHomeSnapshot, markBackground, saveHomeNavigationSnapshot, saveHomeSnapshot } from '../lib/sessionState';
 import { getStoredServerInfo, loadServerInfo } from '../lib/serverInfoCache';
 import { useHorizontalScroller } from '../lib/horizontalScroller';
-import { navigateDeduplicate, navigateHistory, navigateHome } from '../lib/navigation';
+import { navigateDeduplicate, navigateHistory, navigateHome, navigateWatchlist } from '../lib/navigation';
 
 const FILTER_KEY = 'lrr_filter';
 const PRESETS_KEY = 'lrr_filter_presets';
 const RANDOMS_RECENT_KEY = 'lrr_random_recent_v1';
 const RANDOMS_BATCH_SIZE = 8;
+const RANDOMS_DEFAULT_BATCHES = 2;
 const RANDOMS_FILL_MAX_ITEMS = 24;
 const RANDOMS_FETCH_ATTEMPTS = 3;
 const RANDOMS_RECENT_LIMIT = 48;
@@ -141,6 +144,12 @@ function scoreRandomBatch(items, currentIds, recentIds) {
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function waitForPaint() {
+  return new Promise(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
 }
 
 async function withAbortTimeout(task, timeoutMs) {
@@ -363,6 +372,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     return cachedKey === snapshotFilterKey ? snapshot : null;
   })();
   const [history, setHistory] = useState([]);
+  const [watchlist, setWatchlist] = useState([]);
   const [hideRead, setHideReadState] = useState(getHideRead);
   const [cropCover, setCropCoverState] = useState(getCropCover);
   const [showConfig, setShowConfig] = useState(false);
@@ -375,6 +385,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const [archiveDeleting, setArchiveDeleting] = useState(false);
   const [ehFavoriteDeleteSync, setEhFavoriteDeleteSyncState] = useState(getEhFavoriteDeleteSync);
   const [historySyncing, setHistorySyncing] = useState(false);
+  const [watchlistChecking, setWatchlistChecking] = useState(false);
 
   const [cfgWorkerUrl, setCfgWorkerUrl] = useState(getWorkerUrl());
   const [cfgSyncToken, setCfgSyncToken] = useState(getSyncToken());
@@ -391,6 +402,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     return typeof ps.randomsUpdatedAt === 'number' ? ps.randomsUpdatedAt : (ps.ts || 0);
   });
   const [historyCollapsed, setHistoryCollapsed] = useState(() => !!homeSnapshot?.historyCollapsed);
+  const [watchlistCollapsed, setWatchlistCollapsed] = useState(() => !!homeSnapshot?.watchlistCollapsed);
   const [randomCollapsed, setRandomCollapsed] = useState(() => !!homeSnapshot?.randomCollapsed);
   const [archives, setArchives] = useState(() => {
     if (homeSnapshot && Array.isArray(homeSnapshot.archives) && homeSnapshot.archives.length > 0) {
@@ -427,6 +439,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const archivesRef = useRef([]);
   const randomsRef = useRef([]);
   const randomsAutoFillBlockedRef = useRef(false);
+  const randomsAutoFillInFlightRef = useRef(false);
   useEffect(() => { archivesRef.current = archives; }, [archives]);
   useEffect(() => { randomsRef.current = randoms; }, [randoms]);
   const archivesLenRef = useRef(0);
@@ -444,6 +457,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     return !(ps && Array.isArray(ps.randoms) && ps.randoms.length > 0);
   });
   const [randomsRefreshing, setRandomsRefreshing] = useState(false);
+  const [watchlistOverflow, setWatchlistOverflow] = useState(false);
   const coldRestoreRef = useRef(coldRestoreBoot);
   const navigationRestoreRef = useRef(!!navSnapshot && !!homeSnapshot);
   const wasBackgroundedRef = useRef(false);
@@ -469,8 +483,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const filterInputRef = useRef(null);
   const filterControlsRef = useRef(null);
   const historyScroller = useHorizontalScroller();
+  const watchlistScroller = useHorizontalScroller();
   const randomScroller = useHorizontalScroller();
   const getHistoryScrollerNode = historyScroller.getNode;
+  const getWatchlistScrollerNode = watchlistScroller.getNode;
   const getRandomScrollerNode = randomScroller.getNode;
 
   const buildHomeStateSnapshot = useCallback((overrides = {}) => ({
@@ -482,12 +498,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     archiveTotal,
     filter,
     historyCollapsed,
+    watchlistCollapsed,
     randomCollapsed,
     scrollY: window.scrollY || window.pageYOffset || 0,
     historyScrollLeft: getHistoryScrollerNode?.()?.scrollLeft || 0,
+    watchlistScrollLeft: getWatchlistScrollerNode?.()?.scrollLeft || 0,
     randomScrollLeft: getRandomScrollerNode?.()?.scrollLeft || 0,
     ...overrides,
-  }), [archiveTotal, filter, getHistoryScrollerNode, getRandomScrollerNode, hasMore, historyCollapsed, randomCollapsed, randomsUpdatedAt, startOffset]);
+  }), [archiveTotal, filter, getHistoryScrollerNode, getRandomScrollerNode, getWatchlistScrollerNode, hasMore, historyCollapsed, randomCollapsed, randomsUpdatedAt, startOffset, watchlistCollapsed]);
 
   const saveCurrentHomeForNavigation = useCallback(() => {
     const snapshot = buildHomeStateSnapshot();
@@ -505,6 +523,11 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     navigateHistory();
   }, [saveCurrentHomeForNavigation]);
 
+  const handleNavigateWatchlist = useCallback(() => {
+    saveCurrentHomeForNavigation();
+    navigateWatchlist();
+  }, [saveCurrentHomeForNavigation]);
+
   const handleNavigateDeduplicate = useCallback(() => {
     saveCurrentHomeForNavigation();
     setShowConfig(false);
@@ -519,10 +542,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     });
   }, []);
 
+  const watchlistIds = useMemo(() => new Set(watchlist.map((item) => item.id || item.arcid).filter(Boolean)), [watchlist]);
+
   const handleOpenArchiveMenu = useCallback((archive, point, event, options = {}) => {
     if (archiveSelectionMode) return;
-    setArchiveMenu({ archive, x: point.x, y: point.y, ...options });
-  }, [archiveSelectionMode]);
+    const archiveId = archive?.arcid || archive?.id;
+    const showRemoveWatchlist = options.showRemoveWatchlist ?? (archiveId ? watchlistIds.has(archiveId) : false);
+    setArchiveMenu({ archive, x: point.x, y: point.y, ...options, showRemoveWatchlist });
+  }, [archiveSelectionMode, watchlistIds]);
 
   const handleArchiveDownload = useCallback(async (archive) => {
     const archiveId = archive?.arcid || archive?.id;
@@ -559,6 +586,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchives((prev) => prev.filter((arc) => !idSet.has(arc.arcid || arc.id)));
     setRandoms((prev) => prev.filter((arc) => !idSet.has(arc.arcid || arc.id)));
     setHistory((prev) => prev.filter((item) => !idSet.has(item.id)));
+    setWatchlist((prev) => prev.filter((item) => !idSet.has(item.id || item.arcid)));
     setSelectedArchiveIds((prev) => {
       const next = new Set(prev);
       idSet.forEach((id) => next.delete(id));
@@ -598,6 +626,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchiveDeleting(true);
     try {
       const archiveId = await deleteArchiveWithSync(archiveDeleteTarget);
+      removeWatchlistItem(archiveId).catch(() => {});
       removeDeletedArchiveIds([archiveId]);
       setArchiveDeleteTarget(null);
     } catch (err) {
@@ -605,7 +634,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     } finally {
       setArchiveDeleting(false);
     }
-  }, [archiveDeleteTarget, deleteArchiveWithSync, removeDeletedArchiveIds]);
+  }, [archiveDeleteTarget, deleteArchiveWithSync, removeDeletedArchiveIds, removeWatchlistItem]);
 
   useEffect(() => {
     if (archives.length === 0 && randoms.length === 0) return;
@@ -613,7 +642,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       archives,
       randoms,
     }));
-  }, [archives, buildHomeStateSnapshot, randoms, archiveTotal, filter, hasMore, historyCollapsed, randomCollapsed, randomsUpdatedAt, startOffset]);
+  }, [archives, buildHomeStateSnapshot, randoms, archiveTotal, filter, hasMore, historyCollapsed, randomCollapsed, randomsUpdatedAt, startOffset, watchlistCollapsed]);
 
   const scrollToArchives = useCallback(() => {
     const run = () => {
@@ -640,6 +669,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         const el = getHistoryScrollerNode?.();
         if (el) el.scrollLeft = homeSnapshot.historyScrollLeft;
       }
+      if (typeof homeSnapshot.watchlistScrollLeft === 'number') {
+        const el = getWatchlistScrollerNode?.();
+        if (el) el.scrollLeft = homeSnapshot.watchlistScrollLeft;
+      }
       if (typeof homeSnapshot.randomScrollLeft === 'number') {
         const el = getRandomScrollerNode?.();
         if (el) el.scrollLeft = homeSnapshot.randomScrollLeft;
@@ -659,7 +692,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       timers.forEach(clearTimeout);
       clearTimeout(releaseTimer);
     };
-  }, [getHistoryScrollerNode, getRandomScrollerNode, homeSnapshot]);
+  }, [getHistoryScrollerNode, getRandomScrollerNode, getWatchlistScrollerNode, homeSnapshot]);
 
   useEffect(() => {
     const el = filterControlsRef.current;
@@ -781,6 +814,19 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     };
     window.addEventListener('lrr:history-changed', refreshHistory);
     return () => window.removeEventListener('lrr:history-changed', refreshHistory);
+  }, []);
+
+  useEffect(() => {
+    setWatchlist(getWatchlist());
+    if (hasRemoteWatchlist() && !coldRestoreRef.current) {
+      loadWatchlistState().then((state) => setWatchlist(state.items)).catch(() => setWatchlist(getWatchlist()));
+    }
+  }, []);
+
+  useEffect(() => {
+    const refreshWatchlist = () => setWatchlist(getWatchlist());
+    window.addEventListener('lrr:watchlist-changed', refreshWatchlist);
+    return () => window.removeEventListener('lrr:watchlist-changed', refreshWatchlist);
   }, []);
 
   // Fetch randoms — but only if not already hydrated from page-state cache
@@ -1013,22 +1059,23 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const fetchRandoms = useCallback(async ({ background = false, preferFresh = true, append = false } = {}) => {
+  const fetchRandoms = useCallback(async ({ background = false, preferFresh = true, append = false, silent = false } = {}) => {
     exitColdRestoreMode();
     if (!append) randomsAutoFillBlockedRef.current = false;
-    if (background) setRandomsRefreshing(true);
-    else setRandomsLoading(true);
+    if (background && !silent) setRandomsRefreshing(true);
+    else if (!background) setRandomsLoading(true);
     const currentIds = new Set(getRandomBatchIds(randomsRef.current));
     const recentIds = new Set(readRecentRandomIds());
     try {
       let bestBatch = [];
       let bestScore = Number.NEGATIVE_INFINITY;
+      const requestCount = append ? RANDOMS_BATCH_SIZE : RANDOMS_BATCH_SIZE * RANDOMS_DEFAULT_BATCHES;
 
       for (let attempt = 0; attempt < RANDOMS_FETCH_ATTEMPTS; attempt += 1) {
         let batch = [];
         try {
           const res = await withAbortTimeout(
-            (signal) => lrrApi.getRandom(RANDOMS_BATCH_SIZE, { signal }),
+            (signal) => lrrApi.getRandom(requestCount, { signal }),
             RANDOMS_REQUEST_TIMEOUT_MS,
           );
           batch = Array.isArray(res?.data) ? res.data : [];
@@ -1044,7 +1091,18 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           bestScore = score;
         }
 
-        if (!preferFresh || score >= RANDOMS_BATCH_SIZE * 5) break;
+        if (!preferFresh || score >= requestCount * 5) break;
+      }
+
+      const plannedAdditions = [];
+      if (append) {
+        const seen = new Set(currentIds);
+        bestBatch.forEach((item) => {
+          const id = item?.arcid || item?.id;
+          if (!id || seen.has(id)) return;
+          seen.add(id);
+          plannedAdditions.push(item);
+        });
       }
 
       setRandoms((prev) => {
@@ -1056,10 +1114,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           seen.add(id);
           return true;
         });
-        if (additions.length === 0) {
-          randomsAutoFillBlockedRef.current = true;
-          return prev;
-        }
+        if (additions.length === 0) return prev;
         return [...prev, ...additions].slice(0, RANDOMS_FILL_MAX_ITEMS);
       });
       setRandomsUpdatedAt(Date.now());
@@ -1070,12 +1125,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         ...readRecentRandomIds().filter((id) => !nextIds.includes(id)),
       ];
       writeRecentRandomIds(mergedRecentIds);
+      return append ? plannedAdditions.length : bestBatch.length;
     } catch (e) {
       console.error('随机推荐获取失败', e);
       if (randomsRef.current.length > 0) setRandoms(randomsRef.current);
+      return 0;
     } finally {
-      if (background) setRandomsRefreshing(false);
-      else setRandomsLoading(false);
+      if (background && !silent) setRandomsRefreshing(false);
+      else if (!background) setRandomsLoading(false);
     }
   }, [exitColdRestoreMode]);
 
@@ -1089,22 +1146,42 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       randomsAutoFillBlockedRef.current
     ) return undefined;
 
-    let fillRequested = false;
     let disposed = false;
     const frames = [];
     const timers = [];
-    const requestFillIfNeeded = () => {
-      if (disposed || fillRequested) return;
+    const needsFill = () => {
       const el = getRandomScrollerNode?.();
-      if (!el) return;
-      if (el.scrollWidth <= el.clientWidth + 8) {
-        fillRequested = true;
-        fetchRandoms({ background: true, preferFresh: true, append: true });
+      return !!el && el.scrollWidth <= el.clientWidth + 8;
+    };
+    const fillUntilOverflow = async () => {
+      if (disposed || randomsAutoFillInFlightRef.current || !needsFill()) return;
+      randomsAutoFillInFlightRef.current = true;
+      let emptyRuns = 0;
+      try {
+        while (!disposed && needsFill() && randomsRef.current.length < RANDOMS_FILL_MAX_ITEMS) {
+          const before = randomsRef.current.length;
+          const added = await fetchRandoms({ background: true, preferFresh: true, append: true, silent: true });
+          await waitForPaint();
+          const after = randomsRef.current.length;
+          const grew = Math.max(Number(added) || 0, after - before);
+          if (grew <= 0) {
+            emptyRuns += 1;
+            if (emptyRuns >= 2) {
+              randomsAutoFillBlockedRef.current = true;
+              break;
+            }
+            await delay(120);
+          } else {
+            emptyRuns = 0;
+          }
+        }
+      } finally {
+        randomsAutoFillInFlightRef.current = false;
       }
     };
     const scheduleCheck = (delayMs = 0) => {
       const timer = setTimeout(() => {
-        const frame = requestAnimationFrame(requestFillIfNeeded);
+        const frame = requestAnimationFrame(fillUntilOverflow);
         frames.push(frame);
       }, delayMs);
       timers.push(timer);
@@ -1126,6 +1203,47 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       frames.forEach(cancelAnimationFrame);
     };
   }, [fetchRandoms, getRandomScrollerNode, randomCollapsed, randoms.length, randomsLoading, randomsRefreshing]);
+
+  useEffect(() => {
+    if (watchlistCollapsed || watchlist.length === 0) {
+      setWatchlistOverflow(false);
+      return undefined;
+    }
+
+    let disposed = false;
+    const frames = [];
+    const timers = [];
+    const updateOverflow = () => {
+      if (disposed) return;
+      const el = getWatchlistScrollerNode?.();
+      if (!el) return;
+      setWatchlistOverflow(el.scrollWidth > el.clientWidth + 8);
+    };
+    const scheduleCheck = (delayMs = 0) => {
+      const timer = setTimeout(() => {
+        const frame = requestAnimationFrame(updateOverflow);
+        frames.push(frame);
+      }, delayMs);
+      timers.push(timer);
+    };
+
+    [0, 80, 220, 520].forEach(scheduleCheck);
+    const el = getWatchlistScrollerNode?.();
+    let observer = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => scheduleCheck(40));
+      observer.observe(el);
+    }
+    window.addEventListener('resize', updateOverflow);
+
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      window.removeEventListener('resize', updateOverflow);
+      timers.forEach(clearTimeout);
+      frames.forEach(cancelAnimationFrame);
+    };
+  }, [getWatchlistScrollerNode, watchlist.length, watchlistCollapsed]);
 
   const displayArchives = useMemo(() => {
     if (!cropCover) return archives;
@@ -1209,7 +1327,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         failures.push({ id: archiveId, title: archive?.title || archiveId, message: err.message || '删除失败' });
       }
     }
-    if (deletedIds.length > 0) removeDeletedArchiveIds(deletedIds);
+    if (deletedIds.length > 0) {
+      removeWatchlistItems(deletedIds).catch(() => {});
+      removeDeletedArchiveIds(deletedIds);
+    }
     setBulkDeletePending(false);
     setArchiveDeleting(false);
     if (failures.length === 0) {
@@ -1219,7 +1340,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     }
     const preview = failures.slice(0, 5).map((item) => '- ' + item.title + ': ' + item.message).join('\n');
     alert('已删除 ' + deletedIds.length + ' 个，' + failures.length + ' 个失败：\n' + preview + (failures.length > 5 ? '\n...' : ''));
-  }, [deleteArchiveWithSync, removeDeletedArchiveIds, selectedArchiveList]);
+  }, [deleteArchiveWithSync, removeDeletedArchiveIds, removeWatchlistItems, selectedArchiveList]);
 
   const archiveCountLabel = useMemo(() => {
     if (loading && archives.length === 0) return '正在获取结果...';
@@ -1409,6 +1530,18 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     }
   }, [historySyncing]);
 
+  const handleCheckWatchlist = useCallback(async () => {
+    if (watchlistChecking) return;
+    setWatchlistChecking(true);
+    try {
+      await runHistoryExistenceCheck({ force: true });
+      setHistory(getHistory());
+      setWatchlist(getWatchlist());
+    } finally {
+      setWatchlistChecking(false);
+    }
+  }, [watchlistChecking]);
+
   const requestRemoveHistory = useCallback((archive) => {
     setHistoryDeleteTarget(archive);
   }, []);
@@ -1419,6 +1552,19 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     removeHistoryItem(archiveId).catch(() => {});
     setHistory((prev) => prev.filter((item) => item.id !== archiveId));
     setHistoryDeleteTarget(null);
+  }, []);
+
+  const addWatchlistArchive = useCallback((archive) => {
+    if (!archive?.arcid && !archive?.id) return;
+    addWatchlistItem(archive).catch(() => {});
+    setWatchlist(getWatchlist());
+  }, []);
+
+  const removeWatchlistArchive = useCallback((archive) => {
+    const archiveId = archive?.id || archive?.arcid;
+    if (!archiveId) return;
+    removeWatchlistItem(archiveId).catch(() => {});
+    setWatchlist((prev) => prev.filter((item) => (item.id || item.arcid) !== archiveId));
   }, []);
 
   const handleRemoveHistory = useCallback(() => {
@@ -1572,7 +1718,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               {filteredHistory.length > 0 ? (
                 <>
                   {filteredHistory.slice(0, 10).map(h => (
-                    <ArchiveCard key={`hist-${h.id}`} archive={h} onClick={() => handleSelectArchive(h.id)} onArchiveContextMenu={(archive, point, event) => handleOpenArchiveMenu(archive, point, event, { showRemoveHistory: true })} longPressTitle="打开菜单" currentPage={h.page} showProgressBar noCrop={!cropCover} cacheOnly={coldRestoreRef.current} />
+                    <ArchiveCard key={`hist-${h.id}`} className={watchlistIds.has(h.id) ? 'watchlist-card' : undefined} archive={h} onClick={() => handleSelectArchive(h.id)} onArchiveContextMenu={(archive, point, event) => handleOpenArchiveMenu(archive, point, event, { showRemoveHistory: true })} longPressTitle="打开菜单" currentPage={h.page} showProgressBar noCrop={!cropCover} cacheOnly={coldRestoreRef.current} />
                   ))}
                   {filteredHistory.length > 10 && (
                     <button
@@ -1627,6 +1773,69 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         </section>
       )}
 
+      {watchlist.length > 0 && (
+        <section className="glass-panel section-reveal section-reveal-delay-1" style={{ marginBottom: '32px', padding: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px 12px', position: 'relative', zIndex: 0 }}>
+            <SectionHeading glyph="watchlist" onClick={handleNavigateWatchlist} title="查看全部待看归档">待看归档</SectionHeading>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleCheckWatchlist}
+                disabled={watchlistChecking}
+                style={{ padding: '6px 12px', fontSize: '12px', opacity: watchlistChecking ? 0.72 : 1 }}
+                title="检查待看归档是否仍存在于 LANraragi"
+              >
+                {watchlistChecking ? '检查中' : '刷新'}
+              </button>
+              <CollapseButton
+                collapsed={watchlistCollapsed}
+                onClick={() => setWatchlistCollapsed(v => !v)}
+                title={watchlistCollapsed ? '展开待看归档' : '收起待看归档'}
+              />
+            </div>
+          </div>
+          <div style={{ overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)', maxHeight: watchlistCollapsed ? '0px' : '368px' }}>
+            <div ref={watchlistScroller.ref} onWheelCapture={watchlistScroller.onWheelCapture} onScroll={watchlistScroller.onScroll} onMouseDown={watchlistScroller.onMouseDown} onClickCapture={watchlistScroller.onClickCapture} onDragStart={watchlistScroller.onDragStart} style={{ display: 'flex', gap: isNarrow ? '10px' : '16px', overflowX: 'auto', overflowY: 'hidden', padding: isNarrow ? '8px 14px 16px' : '8px 20px 16px', position: 'relative', zIndex: 1, ...watchlistScroller.getTouchScrollStyle(), ...watchlistScroller.getMouseScrollStyle() }} className="no-scrollbar">
+              {watchlist.map(item => (
+                <ArchiveCard key={`watch-${item.id || item.arcid}`} archive={item} onClick={() => handleSelectArchive(item.id || item.arcid)} onArchiveContextMenu={(archive, point, event) => handleOpenArchiveMenu(archive, point, event, { showRemoveWatchlist: true })} longPressTitle="打开菜单" noCrop={!cropCover} cacheOnly={coldRestoreRef.current} />
+              ))}
+              {watchlistOverflow && (
+                <button
+                  type="button"
+                  onClick={handleNavigateWatchlist}
+                  className="history-view-all-btn"
+                  style={{
+                    flexShrink: 0,
+                    width: isNarrow ? '54px' : '68px',
+                    minWidth: isNarrow ? '54px' : '68px',
+                    height: '286px',
+                    alignSelf: 'stretch',
+                    padding: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                  title="查看全部待看归档"
+                  aria-label="查看全部待看归档"
+                >
+                  <span className="history-view-all-arrow" aria-hidden="true" style={{ display: 'flex', alignItems: 'center' }}>
+                    <svg viewBox="0 0 36 48" width="36" height="48" fill="none" stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 8l14 16L8 40" />
+                      <path d="M18 8l14 16-14 16" />
+                    </svg>
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {randomsLoading ? (
         <section className="glass-panel section-reveal section-reveal-delay-2" style={{ marginBottom: '40px', padding: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isNarrow ? '12px 14px' : '12px 20px', height: '50px', minHeight: '50px', boxSizing: 'border-box', position: 'relative', zIndex: 0 }}>
@@ -1655,7 +1864,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           <div style={{ overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)', maxHeight: randomCollapsed ? '0px' : '368px' }}>
             <div ref={randomScroller.ref} onWheelCapture={randomScroller.onWheelCapture} onScroll={randomScroller.onScroll} onMouseDown={randomScroller.onMouseDown} onClickCapture={randomScroller.onClickCapture} onDragStart={randomScroller.onDragStart} style={{ display: 'flex', gap: isNarrow ? '10px' : '16px', overflowX: 'auto', overflowY: 'hidden', padding: isNarrow ? '8px 14px 16px' : '8px 20px 16px', position: 'relative', zIndex: 1, ...randomScroller.getTouchScrollStyle(), ...randomScroller.getMouseScrollStyle() }} className="no-scrollbar">
               {randoms.map(arc => (
-                <ArchiveCard key={`rnd-${arc.arcid}`} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} />
+                <ArchiveCard key={`rnd-${arc.arcid}`} className={watchlistIds.has(arc.arcid || arc.id) ? 'watchlist-card' : undefined} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} />
               ))}
             </div>
           </div>
@@ -1917,7 +2126,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={`gsk-${i}`} />)
           ) : (
             displayArchives.map((arc, index) => (
-              <ArchiveCard key={`${arc.arcid}-${index}`} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} selectionMode={archiveSelectionMode} selected={selectedArchiveIds.has(arc.arcid || arc.id)} onSelectToggle={toggleArchiveSelection} />
+              <ArchiveCard key={`${arc.arcid}-${index}`} className={watchlistIds.has(arc.arcid || arc.id) ? 'watchlist-card' : undefined} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} selectionMode={archiveSelectionMode} selected={selectedArchiveIds.has(arc.arcid || arc.id)} onSelectToggle={toggleArchiveSelection} />
             ))
           )}
         </div>
@@ -1948,7 +2157,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '20px',
+        padding: '16px',
       }}>
         <form className="glass-panel" onClick={e => e.stopPropagation()} onSubmit={(e) => {
           e.preventDefault();
@@ -1956,12 +2165,15 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           setSyncToken(cfgSyncToken);
           setShowConfig(false);
         }} style={{
-          padding: '32px 28px', display: 'flex', flexDirection: 'column', gap: '18px',
-          width: '100%', maxWidth: '420px',
+          padding: 0, display: 'flex', flexDirection: 'column', gap: 0,
+          width: '100%', maxWidth: '520px',
+          maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden',
         }}>
-          <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+          <div style={{ textAlign: 'center', padding: '28px 28px 12px' }}>
             <h2 style={{ margin: '0 0 6px 0', fontSize: '22px' }}>设置</h2>
           </div>
+
+          <div className="settings-panel-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '18px', padding: '0 28px 18px', overflowY: 'auto', minHeight: 0 }}>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
             <div>
@@ -2167,7 +2379,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '14px' }} />
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', padding: '16px 28px 0', borderTop: '1px solid var(--glass-border)' }}>
             <button type="button" className="btn"
               onClick={() => {
                 const encoded = exportConfig();
@@ -2200,7 +2414,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+          <div style={{ display: 'flex', gap: '10px', padding: '10px 28px 24px' }}>
             <button type="button" className="btn" onClick={() => setShowConfig(false)}
               style={{ flex: 1, padding: '10px' }}>
               取消
@@ -2222,6 +2436,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       onCopyLink={handleArchiveCopyLink}
       onDelete={(archive) => setArchiveDeleteTarget(archive)}
       onRemoveHistory={removeHistoryArchive}
+      onAddWatchlist={addWatchlistArchive}
+      onRemoveWatchlist={removeWatchlistArchive}
     />
     <ConfirmDialog
       open={!!archiveDeleteTarget}

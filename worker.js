@@ -646,6 +646,103 @@ async function deleteHistory(request) {
   }
 }
 
+function normalizeWatchlistItems(values) {
+  const merged = new Map();
+  for (const item of Array.isArray(values) ? values : []) {
+    const id = item?.id || item?.arcid;
+    if (!id) continue;
+    const normalized = {
+      ...item,
+      id: String(id),
+      arcid: String(id),
+      title: item.title || String(id),
+      tags: item.tags || '',
+      addedAt: Number(item.addedAt) || Date.now(),
+    };
+    const old = merged.get(normalized.id);
+    if (!old || (normalized.addedAt || 0) >= (old.addedAt || 0)) merged.set(normalized.id, normalized);
+  }
+  return Array.from(merged.values())
+    .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
+    .slice(0, 500);
+}
+
+async function readWatchlistState(token) {
+  try {
+    const raw = await HISTORY_KV.get('watchlist:' + token);
+    return raw ? JSON.parse(raw) : { items: [], lastSync: 0 };
+  } catch {
+    return { items: [], lastSync: 0 };
+  }
+}
+
+async function getWatchlist(request) {
+  const authErr = await requireAuth(request);
+  if (authErr) return authErr;
+  incrementCounter();
+
+  const token = getToken(request);
+  try {
+    const state = await readWatchlistState(token);
+    return json({ items: normalizeWatchlistItems(state.items), lastSync: state.lastSync || 0 });
+  } catch (err) {
+    return json({ error: 'KV read failed: ' + err.message }, 500);
+  }
+}
+
+async function putWatchlist(request) {
+  const authErr = await requireAuth(request);
+  if (authErr) return authErr;
+  incrementCounter();
+
+  const token = getToken(request);
+  let payload;
+  try { payload = await request.json(); } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+
+  const incoming = Array.isArray(payload?.items) ? payload.items : (payload?.item ? [payload.item] : []);
+  if (incoming.length === 0) return json({ error: 'Missing item or items' }, 400);
+
+  const existing = await readWatchlistState(token);
+  const items = normalizeWatchlistItems([...(existing.items || []), ...incoming]);
+  const result = { items, lastSync: Date.now() };
+  try {
+    await HISTORY_KV.put('watchlist:' + token, JSON.stringify(result));
+    return json({ ok: true, count: items.length });
+  } catch (err) {
+    return json({ error: 'KV write failed: ' + err.message }, 500);
+  }
+}
+
+async function deleteWatchlist(request) {
+  const authErr = await requireAuth(request);
+  if (authErr) return authErr;
+  incrementCounter();
+
+  const token = getToken(request);
+  let payload;
+  try { payload = await request.json(); } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+
+  const ids = Array.isArray(payload?.ids) ? payload.ids.map(id => String(id).trim()).filter(Boolean) : [];
+  if (ids.length === 0) return json({ error: 'Missing ids array' }, 400);
+  const removeSet = new Set(ids);
+
+  const existing = await readWatchlistState(token);
+  const result = {
+    items: normalizeWatchlistItems(existing.items).filter((item) => !removeSet.has(item.id)),
+    lastSync: Date.now(),
+  };
+  try {
+    await HISTORY_KV.put('watchlist:' + token, JSON.stringify(result));
+    return json({ ok: true, removed: ids.length, count: result.items.length });
+  } catch (err) {
+    return json({ error: 'KV write failed: ' + err.message }, 500);
+  }
+}
+
 async function getNonDuplicatePairs(request) {
   const authErr = await requireAuth(request);
   if (authErr) return authErr;
@@ -715,8 +812,10 @@ async function exportKV(request) {
   const token = getToken(request);
   const selected = payload?.sections || {};
   const includeHistory = selected.history !== false;
+  const includeWatchlist = selected.watchlist !== false;
   const includeDedupe = selected.dedupe !== false;
   const historyKey = 'history:' + token;
+  const watchlistKey = 'watchlist:' + token;
   const data = {
     version: 2,
     scope: 'token',
@@ -729,6 +828,10 @@ async function exportKV(request) {
     if (includeHistory) {
       const raw = await HISTORY_KV.get(historyKey);
       data.sections.history = { [historyKey]: raw || '' };
+    }
+    if (includeWatchlist) {
+      const raw = await HISTORY_KV.get(watchlistKey);
+      data.sections.watchlist = { [watchlistKey]: raw || '' };
     }
     if (includeDedupe) {
       const raw = await HISTORY_KV.get(DEDUPE_NON_DUP_KEY);
@@ -765,6 +868,14 @@ async function importKV(request) {
         imported += 1;
       }
     }
+    if (selected.watchlist !== false && input.watchlist && typeof input.watchlist === 'object') {
+      const watchlistKey = 'watchlist:' + token;
+      const value = input.watchlist[watchlistKey] ?? firstObjectValue(input.watchlist);
+      if (value !== undefined && value !== null && value !== '') {
+        await HISTORY_KV.put(watchlistKey, typeof value === 'string' ? value : JSON.stringify(value));
+        imported += 1;
+      }
+    }
     if (selected.dedupe !== false && input.dedupe && typeof input.dedupe === 'object') {
       const raw = input.dedupe[DEDUPE_NON_DUP_KEY] || input.dedupe.pairs || firstObjectValue(input.dedupe) || [];
       const incoming = normalizePairKeys(typeof raw === 'string' ? JSON.parse(raw || '[]') : raw);
@@ -793,10 +904,11 @@ async function statusPage(request) {
   await ensureTokensLoaded();
   const kvOk = tokenLoadPromise ? (await tokenLoadPromise) : false;
   const reqCount = requestCount;
-  const { totalArchives, userCount } = await (async () => {
-    if (typeof HISTORY_KV === 'undefined') return { totalArchives: 'N/A', userCount: 'N/A' };
+  const { totalArchives, userCount, watchlistCount } = await (async () => {
+    if (typeof HISTORY_KV === 'undefined') return { totalArchives: 'N/A', userCount: 'N/A', watchlistCount: 'N/A' };
     try {
       const list = await HISTORY_KV.list({ prefix: 'history:' });
+      const watchlistKeys = await HISTORY_KV.list({ prefix: 'watchlist:' });
       const allIds = new Set();
       for (const key of list.keys) {
         try {
@@ -809,8 +921,16 @@ async function statusPage(request) {
           }
         } catch {}
       }
-      return { totalArchives: allIds.size, userCount: list.keys.length };
-    } catch { return { totalArchives: '错误', userCount: '错误' }; }
+      let watchlistTotal = 0;
+      for (const key of watchlistKeys.keys) {
+        try {
+          const raw = await HISTORY_KV.get(key.name);
+          const data = raw ? JSON.parse(raw) : null;
+          if (data && Array.isArray(data.items)) watchlistTotal += data.items.length;
+        } catch {}
+      }
+      return { totalArchives: allIds.size, userCount: list.keys.length, watchlistCount: watchlistTotal };
+    } catch { return { totalArchives: '错误', userCount: '错误', watchlistCount: '错误' }; }
   })();
   const hasKV = typeof HISTORY_KV !== 'undefined';
   const tokenCount = cachedTokens ? cachedTokens.size : 0;
@@ -878,6 +998,7 @@ async function statusPage(request) {
   <div class="stat"><span class="label">请求计数</span><span class="value">${reqCount}</span></div>
   <div class="stat"><span class="label">同步用户数</span><span class="value">${userCount}</span></div>
   <div class="stat"><span class="label">阅读记录数</span><span class="value">${totalArchives}</span></div>
+  <div class="stat"><span class="label">待看记录数</span><span class="value">${watchlistCount}</span></div>
   <div class="stat"><span class="label">KV 存储</span><span class="${hasKV ? 'ok' : 'warn'}">${hasKV ? '已绑定' : '未绑定'}</span></div>
   <div class="stat"><span class="label">KV 读取</span><span class="${kvOk ? 'ok' : 'err'}">${kvOk ? '正常' : '失败'}</span></div>
   <div class="stat"><span class="label">非重复 pair</span><span class="value">${dedupeCount}</span></div>
@@ -904,6 +1025,7 @@ async function statusPage(request) {
     <div class="hint">已通过 Token 验证。导入会写入当前 Token 对应的 KV 数据，不会覆盖其他 Token。</div>
     <div class="checks">
       <label><input id="sectionHistory" type="checkbox" checked style="width:auto"> 阅读历史</label>
+      <label><input id="sectionWatchlist" type="checkbox" checked style="width:auto"> 待看归档</label>
       <label><input id="sectionDedupe" type="checkbox" checked style="width:auto"> 非重复 arcid</label>
     </div>
     <button id="exportBtn" type="button">导出选中数据</button>
@@ -927,6 +1049,7 @@ let syncToken = '';
 function sections() {
   return {
     history: document.getElementById('sectionHistory').checked,
+    watchlist: document.getElementById('sectionWatchlist').checked,
     dedupe: document.getElementById('sectionDedupe').checked,
   };
 }
@@ -1044,6 +1167,13 @@ async function handleRequest(request) {
     if (request.method === 'GET') return getHistory(request);
     if (request.method === 'PUT') return putHistory(request);
     if (request.method === 'DELETE') return deleteHistory(request);
+    return json({ error: 'Method not allowed' }, 405);
+  }
+
+  if (url.pathname === '/watchlist') {
+    if (request.method === 'GET') return getWatchlist(request);
+    if (request.method === 'PUT') return putWatchlist(request);
+    if (request.method === 'DELETE') return deleteWatchlist(request);
     return json({ error: 'Method not allowed' }, 405);
   }
 

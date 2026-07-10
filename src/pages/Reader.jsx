@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import { flushSync } from 'react-dom';
 import { lrrApi } from '../lib/api';
 import { getHistory, saveHistory, getHideRead, removeHistoryItem, hasRemoteHistory, loadHistoryState } from '../lib/history';
+import { removeWatchlistItem } from '../lib/watchlist';
 import { isArchiveMissingError } from '../lib/historyMaintenance';
 import { translateTag, categorizeTags } from '../lib/tags';
 import { getCachedImage, getImage, clearImageCache, primeImage } from '../lib/imageCache';
@@ -975,6 +976,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const leftDivRef = useRef(null);
   const rightDivRef = useRef(null);
   const immersiveLoadSeqRef = useRef(0);
+  const watchlistAutoRemovedRef = useRef(new Set());
   const commitPageTargetRef = useRef(null);
   const viewModeRef = useRef(viewMode);
   const currentIndexRef = useRef(0);
@@ -1404,6 +1406,12 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     if (archive && pages.length > 0) {
       saveHistory(archive, currentIndex + 1).catch(() => {});
       setHistoryEntries(getHistory());
+      const archiveId = archive.arcid || archive.id;
+      const totalPages = Number(archive.pagecount || pages.length) || 0;
+      if (archiveId && totalPages > 0 && (currentIndex + 1) / totalPages > 0.8 && !watchlistAutoRemovedRef.current.has(archiveId)) {
+        watchlistAutoRemovedRef.current.add(archiveId);
+        removeWatchlistItem(archiveId).catch(() => {});
+      }
       if (coldRestoreRef.current) return undefined;
       const timer = setTimeout(() => {
         if (serverTracksProgress) {
@@ -2201,9 +2209,11 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             <button style={{ ...btnBase, padding: isMobile ? '8px 8px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} onClick={handleGoBack}>
               {isMobile ? <ToolbarGlyph name="back" size={20} /> : '← 返回'}
             </button>
-            <button disabled={!readerReady} style={{ ...btnBase, padding: isMobile ? '8px 8px' : '8px 14px', fontSize: isMobile ? '16px' : '13px', opacity: readerReady ? 1 : 0.45, cursor: readerReady ? 'pointer' : 'not-allowed' }} data-panel-toggle onClick={() => { if (!readerReady) return; setShowHistoryPanel((v) => !v); setShowSettingsPanel(false); }}>
-              {isMobile ? <ToolbarGlyph name="history" size={20} /> : '阅读历史'}
-            </button>
+            {viewMode !== 'immersive' && (
+              <button disabled={!readerReady} style={{ ...btnBase, padding: isMobile ? '8px 8px' : '8px 14px', fontSize: isMobile ? '16px' : '13px', opacity: readerReady ? 1 : 0.45, cursor: readerReady ? 'pointer' : 'not-allowed' }} data-panel-toggle onClick={() => { if (!readerReady) return; setShowHistoryPanel((v) => !v); setShowSettingsPanel(false); }}>
+                {isMobile ? <ToolbarGlyph name="history" size={20} /> : '阅读历史'}
+              </button>
+            )}
           </div>
 
           {!isMobile && (
@@ -2251,26 +2261,30 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 ? <ToolbarGlyph name={viewMode === 'normal' ? 'fullscreen' : 'fullscreenExit'} size={18} />
                 : (viewMode === 'normal' ? '沉浸模式' : '退出沉浸')}
             </button>
-            <button
-              disabled={!readerReady || pages.length === 0 || coverSetting}
-              style={{
-                ...btnBase,
-                padding: isMobile ? '8px 10px' : '8px 14px',
-                fontSize: isMobile ? '16px' : '13px',
-                opacity: (!readerReady || pages.length === 0 || coverSetting) ? 0.45 : 1,
-                cursor: (!readerReady || pages.length === 0 || coverSetting) ? 'not-allowed' : 'pointer',
-              }}
-              onClick={handleSetCover}
-              title={`将当前第 ${currentIndex + 1} 页设为封面`}
-              aria-label={`将当前第 ${currentIndex + 1} 页设为封面`}
-            >
-              {isMobile
-                ? <ToolbarGlyph name="cover" size={18} />
-                : (coverSetting ? '设置中...' : coverSetPage === currentIndex + 1 ? '已设为封面' : '设为封面')}
-            </button>
-            <button style={{ ...btnBase, padding: isMobile ? '8px 10px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} data-panel-toggle onClick={() => { setShowSettingsPanel((v) => !v); setShowHistoryPanel(false); }}>
-              {isMobile ? <ToolbarGlyph name="settings" size={18} /> : '阅读设定'}
-            </button>
+            {viewMode !== 'immersive' && (
+              <>
+                <button
+                  disabled={!readerReady || pages.length === 0 || coverSetting}
+                  style={{
+                    ...btnBase,
+                    padding: isMobile ? '8px 10px' : '8px 14px',
+                    fontSize: isMobile ? '16px' : '13px',
+                    opacity: (!readerReady || pages.length === 0 || coverSetting) ? 0.45 : 1,
+                    cursor: (!readerReady || pages.length === 0 || coverSetting) ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={handleSetCover}
+                  title={`将当前第 ${currentIndex + 1} 页设为封面`}
+                  aria-label={`将当前第 ${currentIndex + 1} 页设为封面`}
+                >
+                  {isMobile
+                    ? <ToolbarGlyph name="cover" size={18} />
+                    : (coverSetting ? '设置中...' : coverSetPage === currentIndex + 1 ? '已设为封面' : '设为封面')}
+                </button>
+                <button style={{ ...btnBase, padding: isMobile ? '8px 10px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} data-panel-toggle onClick={() => { setShowSettingsPanel((v) => !v); setShowHistoryPanel(false); }}>
+                  {isMobile ? <ToolbarGlyph name="settings" size={18} /> : '阅读设定'}
+                </button>
+              </>
+            )}
             <button style={{ ...btnBase, padding: isMobile ? '8px 10px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} onClick={() => setShowDrawer(true)}>
               {isMobile ? <ToolbarGlyph name="grid" size={18} /> : '缩略面板'}
             </button>

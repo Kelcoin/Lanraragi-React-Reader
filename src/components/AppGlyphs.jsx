@@ -39,6 +39,14 @@ function renderSectionGlyph(name) {
           <path d="M7.25 18.5h9.5" opacity="0.58" />
         </>
       );
+    case 'watchlist':
+      return (
+        <>
+          <rect x="5.5" y="4.75" width="13" height="15.5" rx="2.4" fill="currentColor" fillOpacity="0.12" stroke="none" />
+          <path d="M8 5.5h8a2.5 2.5 0 0 1 2.5 2.5v11.5l-6.5-3.25-6.5 3.25V8A2.5 2.5 0 0 1 8 5.5z" />
+          <path d="M12 8.7l.85 1.72 1.9.28-1.38 1.34.33 1.9L12 13.05l-1.7.89.33-1.9-1.38-1.34 1.9-.28L12 8.7z" fill="currentColor" fillOpacity="0.22" />
+        </>
+      );
     case 'random':
       return (
         <>
@@ -253,9 +261,10 @@ function renderThemeModeGlyph(mode) {
 }
 
 const SECTION_GLYPH_COLORS = {
-  continue: '#66d19e',
-  random: '#65c6ff',
-  archives: '#f0b35f',
+  continue: '#3cbf8c',
+  watchlist: '#e6a246',
+  random: '#409eff',
+  archives: '#a482d6',
 };
 
 export function HomeSectionGlyph({ name, size = 18, color = 'currentColor', style }) {
