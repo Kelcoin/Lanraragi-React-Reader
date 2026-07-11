@@ -35,6 +35,9 @@ const CONFIG_KEYS = [
   'lrr_filter',
   'lrr_crop_cover',
   'lrr_eh_favorite_delete_sync',
+  'lrr_image_cache_limit',
+  'lrr_theme_mode',
+  'lrr_filter_presets',
 ];
 
 export function exportConfig() {

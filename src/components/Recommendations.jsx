@@ -410,7 +410,7 @@ export default function Recommendations({ currentArchive }) {
           }}
           className="no-scrollbar"
         >
-          <div key={contentKey} className="component-content-fade" style={{ display: 'flex', gap: '10px', padding: loading ? '4px 0' : 0, flexShrink: 0, minWidth: 'max-content' }}>
+          <div key={contentKey} className="component-content-fade" style={{ display: 'flex', gap: '10px', padding: loading ? '4px 0' : 0, flex: '0 0 max-content', width: 'max-content', minWidth: '100%' }}>
             {loading ? (
               <>
               {Array.from({ length: skeletonCount }).map((_, i) => (

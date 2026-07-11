@@ -2395,7 +2395,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               zIndex: 9999,
               padding: '22px',
               borderRadius: '14px',
-              width: '300px',
+              width: isMobile ? 'calc(100vw - 40px)' : '380px',
               maxHeight: '80vh',
               boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
               border: '1px solid rgba(255,255,255,0.1)',

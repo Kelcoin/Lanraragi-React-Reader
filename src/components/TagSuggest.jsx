@@ -30,6 +30,7 @@ export default function TagSuggest({ inputValue, onSelectTag, containerRef, onSe
   const debounceRef = useRef(null);
   const dismissTimerRef = useRef(null);
   const [panelShift, setPanelShift] = useState(0); // mobile: px to shift panel left
+  const [anchor, setAnchor] = useState(null);
 
   const updateSuggestions = useCallback((val) => {
     if (!isDBReady()) {
@@ -81,6 +82,24 @@ export default function TagSuggest({ inputValue, onSelectTag, containerRef, onSe
       setPanelShift(parentRect.left - 16);
     }
   }, [visible, isNarrow, containerRef]);
+
+  useEffect(() => {
+    if (!visible || !containerRef?.current) { setAnchor(null); return undefined; }
+    const update = () => {
+      const rect = containerRef.current.getBoundingClientRect();
+      const gap = 6;
+      const viewportGap = 12;
+      const below = window.innerHeight - rect.bottom - gap - viewportGap;
+      const above = rect.top - gap - viewportGap;
+      const openAbove = below < 180 && above > below;
+      const maxHeight = Math.max(120, Math.min(320, openAbove ? above : below));
+      setAnchor({ left: Math.max(viewportGap, Math.min(rect.left, window.innerWidth - rect.width - viewportGap)), top: openAbove ? Math.max(viewportGap, rect.top - gap - maxHeight) : rect.bottom + gap, width: rect.width, maxHeight });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); };
+  }, [containerRef, visible]);
 
   // ── Dismiss on outside click/tap ──
   // Panel uses stopPropagation to prevent events from reaching document.
@@ -161,7 +180,17 @@ export default function TagSuggest({ inputValue, onSelectTag, containerRef, onSe
   // Desktop: absolute, anchored below the input
   // Mobile: absolute with negative left shift, fills viewport width
   let panelStyle;
-  if (isNarrow) {
+  if (anchor) {
+    panelStyle = {
+      ...basePanel,
+      position: 'fixed',
+      left: anchor.left,
+      top: anchor.top,
+      width: anchor.width,
+      maxHeight: anchor.maxHeight,
+      zIndex: 200000,
+    };
+  } else if (isNarrow) {
     panelStyle = {
       ...basePanel,
       position: 'absolute',

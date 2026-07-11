@@ -21,3 +21,23 @@ export function normalizeMetadataPlugins(list) {
     return { value, label };
   }).filter(option => option.value && !seen.has(option.value) && seen.add(option.value));
 }
+
+export function formatMetadataTag(tag, translate = (_namespace, value) => value) {
+  const raw = String(tag || '').trim();
+  const separator = raw.indexOf(':');
+  if (separator < 1) return raw;
+  const namespace = raw.slice(0, separator).toLowerCase();
+  const value = raw.slice(separator + 1).trim();
+  if (namespace === 'date_added' || namespace === 'timestamp') {
+    const number = Number(value);
+    if (number > 0) {
+      const date = new Date(number > 1e12 ? number : number * 1000);
+      if (!Number.isNaN(date.getTime())) return `${namespace === 'date_added' ? '添加日期' : '发布日期'}：${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    }
+  }
+  if (namespace === 'source') {
+    try { const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`); return `来源：${url.hostname}${url.pathname === '/' ? '' : url.pathname}`; } catch { return `来源：${value}`; }
+  }
+  const translated = translate(namespace, value);
+  return translated && translated !== value ? translated : raw;
+}
