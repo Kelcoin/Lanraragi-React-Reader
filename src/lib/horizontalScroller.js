@@ -49,12 +49,12 @@ export function useHorizontalScroller() {
   const handleWheel = useCallback((e) => {
     if (e.ctrlKey) return;
     const el = e.currentTarget || scrollerElRef.current;
-    if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+    if (!el) return;
     const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (delta === 0) return;
     if (e.cancelable) e.preventDefault();
     e.stopPropagation();
-    el.scrollLeft += delta * 2.4;
+    if (el.scrollWidth > el.clientWidth + 1) el.scrollLeft += delta * 2.4;
     markHorizontalScrollActivity(el);
   }, []);
 
@@ -115,6 +115,7 @@ export function useHorizontalScroller() {
     touchAction: 'auto',
     WebkitOverflowScrolling: 'touch',
     overscrollBehaviorX: 'contain',
+    overscrollBehaviorY: 'contain',
   }), []);
 
   const getMouseScrollStyle = useCallback(() => ({

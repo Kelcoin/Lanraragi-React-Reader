@@ -6,7 +6,7 @@ export default function CustomSelect({ value, options, onChange, style, compact 
   const containerRef = useRef(null);
   const triggerRef = useRef(null);
   const dropdownRef = useRef(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 250 });
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -38,7 +38,13 @@ export default function CustomSelect({ value, options, onChange, style, compact 
         onClick={() => {
             if (!isOpen && triggerRef.current) {
               const r = triggerRef.current.getBoundingClientRect();
-              setPos({ top: r.bottom + 8, left: r.left, width: r.width });
+              const gap = 8;
+              const viewportGap = 12;
+              const below = window.innerHeight - r.bottom - gap - viewportGap;
+              const above = r.top - gap - viewportGap;
+              const openAbove = below < 180 && above > below;
+              const maxHeight = Math.max(120, Math.min(320, openAbove ? above : below));
+              setPos({ top: openAbove ? Math.max(viewportGap, r.top - gap - maxHeight) : r.bottom + gap, left: Math.max(viewportGap, Math.min(r.left, window.innerWidth - r.width - viewportGap)), width: r.width, maxHeight });
             }
             setIsOpen(prev => !prev);
           }}
@@ -59,7 +65,7 @@ export default function CustomSelect({ value, options, onChange, style, compact 
       {isOpen && createPortal(
         <div ref={dropdownRef} className="glass-panel dropdown-animate" data-select-dropdown="true" style={{
           position: 'fixed', top: pos.top, left: pos.left, width: pos.width || 'auto',
-          zIndex: 99999, padding: '8px 0', maxHeight: '250px', overflowY: 'auto',
+          zIndex: 99999, padding: '8px 0', maxHeight: pos.maxHeight, overflowY: 'auto',
           boxShadow: '0 18px 52px rgba(0,0,0,0.46)',
           background: 'var(--dropdown-bg)'
         }}>

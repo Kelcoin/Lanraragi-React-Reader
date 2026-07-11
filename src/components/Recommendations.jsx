@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { lrrApi } from '../lib/api';
 import { getCropCover } from '../lib/history';
 import { useHorizontalScroller } from '../lib/horizontalScroller';
-import { navigateToArchive } from '../lib/navigation';
+import { navigateToArchive, navigateToMetadata } from '../lib/navigation';
 import ArchiveCard from './ArchiveCard';
 import ArchiveContextMenu from './ArchiveContextMenu';
 import ConfirmDialog from './ConfirmDialog';
@@ -402,7 +402,7 @@ export default function Recommendations({ currentArchive }) {
           onDragStart={scroller.onDragStart}
           style={{
             display: 'flex', flexDirection: 'row', overflowX: 'auto', overflowY: 'hidden',
-            gap: '10px', padding: isNarrow ? '10px 14px 16px' : '14px 20px 16px', scrollBehavior: 'smooth',
+            gap: '10px', padding: isNarrow ? '10px 14px 16px' : '14px 20px 16px',
             scrollbarWidth: 'none',
             overscrollBehaviorY: 'contain',
             ...scroller.getTouchScrollStyle(),
@@ -451,6 +451,7 @@ export default function Recommendations({ currentArchive }) {
       menu={archiveMenu}
       onClose={() => setArchiveMenu(null)}
       onRead={(archive) => handleCardClick(archive)}
+      onEditMetadata={(archive) => navigateToMetadata(archive.arcid || archive.id)}
       onDownload={handleArchiveDownload}
       onCopyLink={handleArchiveCopyLink}
       onDelete={(archive) => setArchiveDeleteTarget(archive)}

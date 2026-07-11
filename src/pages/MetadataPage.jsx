@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { lrrApi } from '../lib/api';
-import { mergeTags, metadataFingerprint, parseTags } from '../lib/metadataEditor';
+import { mergeTags, metadataFingerprint, normalizeMetadataPlugins, parseTags } from '../lib/metadataEditor';
 import { navigateHome, navigateToArchive } from '../lib/navigation';
 import CustomSelect from '../components/CustomSelect';
 import TagSuggest from '../components/TagSuggest';
@@ -29,8 +29,8 @@ export default function MetadataPage({ archiveId }) {
     Promise.all([lrrApi.getArchive(archiveId), lrrApi.getMetadataPlugins().catch(() => [])]).then(([data, list]) => {
       const next = { title: data.title || '', summary: data.summary || '', tags: parseTags(data.tags) };
       setArchive(data); setForm(next); setBaseline(metadataFingerprint({ ...next, tags: next.tags.join(',') }));
-      const values = Array.isArray(list) ? list : (list?.data || list?.plugins || []);
-      setPlugins(values); setPlugin(String(values[0]?.plugin || values[0]?.id || values[0] || ''));
+      const values = normalizeMetadataPlugins(list);
+      setPlugins(values); setPlugin(values[0]?.value || '');
     }).catch(error => setStatus(error.message));
   }, [archiveId]);
 
@@ -66,7 +66,7 @@ export default function MetadataPage({ archiveId }) {
       <label>摘要<textarea className="input-glass" style={{ ...field, minHeight: 110 }} value={form.summary} onChange={e => setForm({ ...form, summary: e.target.value })} /></label>
       <div><div style={{ marginBottom: 8 }}>标签</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{form.tags.map(tag => <button key={tag} className="btn" onClick={() => setForm({ ...form, tags: form.tags.filter(item => item !== tag) })}>{tag} ×</button>)}</div>
         <div ref={tagInputRef} style={{ position: 'relative' }}><input className="input-glass" style={{ ...field, marginTop: 10 }} value={tagInput} placeholder="输入中文、拼音或标签，按回车/逗号添加" onChange={e => { const value = e.target.value; if (value.includes(',')) addTags(value); else setTagInput(value); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTags(tagInput); } else if (e.key === 'Backspace' && !tagInput && form.tags.length) setForm({ ...form, tags: form.tags.slice(0, -1) }); }} /><TagSuggest inputValue={tagInput} containerRef={tagInputRef} onSelectTag={(tag) => addTags(tag.replace(/\$$/, ''))} /></div></div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(220px, 1fr) auto', gap: 10, alignItems: 'center' }}><CustomSelect value={plugin} options={plugins.map((item) => { const value = String(item?.plugin || item?.id || item); return { value, label: item?.name || value }; })} onChange={setPlugin} /><input className="input-glass" value={pluginArg} onChange={e => setPluginArg(e.target.value)} placeholder="插件参数或 URL" /><button className="btn" onClick={runPlugin}>执行插件</button></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(220px, 1fr) auto', gap: 10, alignItems: 'center' }}><CustomSelect value={plugin} options={plugins} onChange={setPlugin} /><input className="input-glass" value={pluginArg} onChange={e => setPluginArg(e.target.value)} placeholder="插件参数或 URL" /><button className="btn" onClick={runPlugin}>执行插件</button></div>
       {status && <div style={{ color: 'var(--text-sub)' }}>{status}</div>}
       <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 14 }}><button className="btn" onClick={() => navigateToArchive(archiveId)}>阅读归档</button><button className="btn" onClick={() => { setDeleteSync(true); setDeleteOpen(true); }} style={{ color: '#ff9e9e' }}>删除归档</button><button className="btn" onClick={save}>保存元数据</button><button className="btn" onClick={() => { if (window.history.length > 1) window.history.back(); else navigateHome(); }}>返回</button></div>
     </section>
