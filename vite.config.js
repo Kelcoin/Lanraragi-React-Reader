@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
 
   // Fallback: manually parse .env.local in case Vite's loadEnv doesn't pick it up
   const localEnv = readEnvLocal(cwd);
+  const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   const forceIPv4 = env.VITE_FORCE_IPV4 === 'true';
   const httpAgent = forceIPv4
@@ -127,6 +128,9 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    define: {
+      __APP_BUILD_ID__: JSON.stringify(buildId),
+    },
     plugins: [
       react(),
       {

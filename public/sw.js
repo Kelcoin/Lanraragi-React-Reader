@@ -1,11 +1,10 @@
-// Conservative app-shell worker:
-// - never force-reloads or claims an already running page
-// - keeps a cached app shell for cold/background restores
-// - prefers a fresh index.html when the network responds quickly
-const CACHE = 'lrr-shell-runtime-v3';
+// Each build registers /sw.js with a unique version query. The version is also
+// part of the cache name, so code from different deployments can never mix.
+const BUILD_VERSION = new URL(self.location.href).searchParams.get('v') || 'legacy-v4';
+const CACHE_PREFIX = 'lrr-shell-';
+const CACHE = `${CACHE_PREFIX}${BUILD_VERSION}`;
 const APP_SHELL = '/index.html';
 const STATIC_ASSETS = [APP_SHELL, '/manifest.json'];
-const NAVIGATION_NETWORK_TIMEOUT_MS = 900;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -18,7 +17,7 @@ self.addEventListener('install', (event) => {
           }
         })
       )
-    )
+    ).then(() => self.skipWaiting())
   );
 });
 
@@ -26,11 +25,12 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
       caches.keys().then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
+        Promise.all(keys.filter((key) => (key.startsWith(CACHE_PREFIX) || key === 'lrr-shell-runtime-v3') && key !== CACHE).map((key) => caches.delete(key)))
       ),
       self.registration.navigationPreload
         ? self.registration.navigationPreload.enable().catch(() => {})
         : Promise.resolve(),
+      self.clients.claim(),
     ])
   );
 });
@@ -70,12 +70,6 @@ function isBypassRequest(request, url) {
 
 function isCacheableResponse(response) {
   return response && response.ok && (response.type === 'basic' || response.type === 'default');
-}
-
-function timeout(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function offlineAppShellResponse() {
@@ -121,16 +115,11 @@ function fetchStaticAsset(request) {
 async function handleNavigation(network) {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(APP_SHELL);
-
-  if (!cached) {
-    return network.catch(() => caches.match(APP_SHELL).then((fallback) => fallback || offlineAppShellResponse()));
+  try {
+    return await network;
+  } catch {
+    return cached || offlineAppShellResponse();
   }
-
-  const freshOrTimeout = await Promise.race([
-    network.catch(() => cached),
-    timeout(NAVIGATION_NETWORK_TIMEOUT_MS).then(() => cached),
-  ]);
-  return freshOrTimeout || cached;
 }
 
 async function handleStaticAsset(request, network) {
@@ -141,9 +130,11 @@ async function handleStaticAsset(request, network) {
   }
 
   const cached = await cache.match(request, { ignoreVary: true });
-
-  if (cached) return cached;
-  return network;
+  try {
+    return await network;
+  } catch {
+    return cached || Response.error();
+  }
 }
 
 self.addEventListener('fetch', (event) => {

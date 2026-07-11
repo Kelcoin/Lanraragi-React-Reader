@@ -23,7 +23,7 @@ if ('serviceWorker' in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+    navigator.serviceWorker.register(`/sw.js?v=${encodeURIComponent(__APP_BUILD_ID__)}`, { updateViaCache: 'none' })
       .then((registration) => {
         let lastUpdateCheck = 0;
         const notifyUpdateReady = (worker) => {
