@@ -2,7 +2,8 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import { flushSync } from 'react-dom';
 import { lrrApi } from '../lib/api';
 import { getHistory, saveHistory, getHideRead, removeHistoryItem, hasRemoteHistory, loadHistoryState } from '../lib/history';
-import { removeWatchlistItem } from '../lib/watchlist';
+import { getWatchlist, hasRemoteWatchlist, loadWatchlistState, removeWatchlistItem } from '../lib/watchlist';
+import { getReaderArchiveListMeta } from '../lib/readerArchiveList';
 import { isArchiveMissingError } from '../lib/historyMaintenance';
 import { translateTag, categorizeTags } from '../lib/tags';
 import { getCachedImage, getImage, clearImageCache, primeImage } from '../lib/imageCache';
@@ -399,7 +400,7 @@ const PageImage = React.forwardRef(({
   );
 });
 
-const HistoryThumb = ({ archiveId, cacheOnly = false }) => {
+const ReaderArchiveThumb = ({ archiveId, cacheOnly = false }) => {
   const [src, setSrc] = useState(null);
   const [allowNetworkFallback, setAllowNetworkFallback] = useState(() => !cacheOnly);
   useEffect(() => {
@@ -446,6 +447,105 @@ const HistoryThumb = ({ archiveId, cacheOnly = false }) => {
     </div>
   );
 };
+
+function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, onDelete }) {
+  return (
+    <div
+      data-panel={type}
+      className="glass-panel dropdown-animate no-scrollbar"
+      style={{
+        position: 'absolute',
+        top: '62px',
+        left: '20px',
+        zIndex: 110,
+        padding: '18px',
+        borderRadius: '14px',
+        width: '360px',
+        maxHeight: '70vh',
+        overflowY: 'auto',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
+        border: '1px solid rgba(255,255,255,0.1)',
+      }}
+    >
+      <div style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+        {title}
+      </div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: '12px', color: 'var(--text-sub)', padding: '8px 0' }}>{emptyMessage}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {items.map((item) => {
+            const id = item.id || item.arcid;
+            const tags = (item.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+            const showNs = new Set(['category', 'parody', 'male', 'female']);
+            const displayTags = tags
+              .filter((tag) => showNs.has(tag.split(':')[0].toLowerCase()))
+              .map((tag) => {
+                const separator = tag.indexOf(':');
+                if (separator <= 0) return tag;
+                return translateTag(tag.slice(0, separator).toLowerCase(), tag.slice(separator + 1).trim());
+              })
+              .filter(Boolean)
+              .slice(0, 6);
+            const meta = getReaderArchiveListMeta(item, type);
+
+            return (
+              <div
+                key={id}
+                onClick={() => navigateToArchive(id)}
+                style={{
+                  display: 'flex', gap: '10px', alignItems: 'center',
+                  padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+                onMouseLeave={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+              >
+                <ReaderArchiveThumb archiveId={id} cacheOnly={cacheOnly} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', color: '#e3e9f3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.title}
+                  </div>
+                  {displayTags.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
+                      {displayTags.map((tag, index) => (
+                        <span key={index} style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', color: '#aaa', background: 'rgba(255,255,255,0.08)', whiteSpace: 'nowrap' }}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ flexShrink: 0, textAlign: 'right', minWidth: '52px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-sub)' }}>
+                    {meta.timestamp ? new Date(meta.timestamp).toLocaleDateString() : ''}
+                  </div>
+                  {meta.progress && (
+                    <div style={{ fontSize: '10px', color: 'var(--accent)', marginTop: '2px' }}>{meta.progress}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete(item);
+                  }}
+                  style={{
+                    background: 'transparent', border: 'none', color: '#8f97a8', cursor: 'pointer',
+                    fontSize: '16px', lineHeight: 1, padding: '2px 4px', borderRadius: '4px', flexShrink: 0,
+                  }}
+                  title={type === 'watchlist' ? '移出待看' : '删除历史'}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function normalizePageUrl(rawUrl, serverUrl) {
   if (!rawUrl) return '';
@@ -733,6 +833,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const [showDrawer, setShowDrawer] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [showWatchlistPanel, setShowWatchlistPanel] = useState(false);
   const [historyDeleteTarget, setHistoryDeleteTarget] = useState(null);
   const [coverSetting, setCoverSetting] = useState(false);
   const [coverSetPage, setCoverSetPage] = useState(0);
@@ -742,6 +843,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const [readerReady, setReaderReady] = useState(() => hasSnapshot);
   const [assetCacheOnly, setAssetCacheOnly] = useState(() => hasSnapshot);
   const [historyEntries, setHistoryEntries] = useState(() => getHistory());
+  const [watchlistEntries, setWatchlistEntries] = useState(() => getWatchlist());
   const [hideRead] = useState(getHideRead);
   const [isMobile, setIsMobile] = useState(false);
   const [serverTracksProgress, setServerTracksProgress] = useState(() => {
@@ -834,6 +936,15 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   useEffect(() => {
     if (!hasRemoteHistory()) return;
     loadHistoryState().then((state) => setHistoryEntries(state.histories)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const refreshWatchlist = () => setWatchlistEntries(getWatchlist());
+    window.addEventListener('lrr:watchlist-changed', refreshWatchlist);
+    if (hasRemoteWatchlist()) {
+      loadWatchlistState().then((state) => setWatchlistEntries(state.items)).catch(() => {});
+    }
+    return () => window.removeEventListener('lrr:watchlist-changed', refreshWatchlist);
   }, []);
 
   const saveReaderStateSnapshot = useCallback(() => {
@@ -1882,6 +1993,12 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     setHistoryDeleteTarget(null);
   }, [historyDeleteTarget]);
 
+  const handleRemoveWatchlist = useCallback((item) => {
+    const id = item?.id || item?.arcid;
+    if (!id) return;
+    removeWatchlistItem(id).finally(() => setWatchlistEntries(getWatchlist()));
+  }, []);
+
   const handleSetCover = useCallback(() => {
     if (!archiveId || pages.length === 0 || coverSetting) return;
     setCoverConfirmPage(currentIndex + 1);
@@ -1946,6 +2063,13 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const historyList = useMemo(() => {
     return hideRead ? historyEntries.filter(h => !(h.total > 0 && h.page >= h.total)) : historyEntries;
   }, [hideRead, historyEntries]);
+
+  useEffect(() => {
+    if (viewMode !== 'immersive') return;
+    setShowSettingsPanel(false);
+    setShowHistoryPanel(false);
+    setShowWatchlistPanel(false);
+  }, [viewMode]);
 
   const drawerGridWidth = Math.max(0, drawerViewport.width || (isMobile ? 0 : 372));
   const drawerItemWidth = getDrawerItemWidth(drawerGridWidth);
@@ -2107,17 +2231,18 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
   // ===== Outside-click to close panels =====
   useEffect(() => {
-    if (!showSettingsPanel && !showHistoryPanel) return;
+    if (!showSettingsPanel && !showHistoryPanel && !showWatchlistPanel) return;
     if (!readerReady) return undefined;
     const handler = (e) => {
       const t = e.target;
       if (t?.closest?.('[data-panel]') || t?.closest?.('[data-panel-toggle]') || t?.closest?.('[data-select-dropdown]') || t?.closest?.('[data-dialog-root]') || t?.closest?.('[data-dialog-overlay]')) return;
       setShowSettingsPanel(false);
       setShowHistoryPanel(false);
+      setShowWatchlistPanel(false);
     };
     window.addEventListener('mousedown', handler, { passive: true });
     return () => window.removeEventListener('mousedown', handler);
-  }, [readerReady, showSettingsPanel, showHistoryPanel]);
+  }, [readerReady, showHistoryPanel, showSettingsPanel, showWatchlistPanel]);
 
   if (loading) {
     return <ReaderStageSkeleton title={archive?.title || ''} hasMeta={false} hasPages={false} isMobile={isMobile} />;
@@ -2210,9 +2335,14 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               {isMobile ? <ToolbarGlyph name="back" size={20} /> : '← 返回'}
             </button>
             {viewMode !== 'immersive' && (
-              <button disabled={!readerReady} style={{ ...btnBase, padding: isMobile ? '8px 8px' : '8px 14px', fontSize: isMobile ? '16px' : '13px', opacity: readerReady ? 1 : 0.45, cursor: readerReady ? 'pointer' : 'not-allowed' }} data-panel-toggle onClick={() => { if (!readerReady) return; setShowHistoryPanel((v) => !v); setShowSettingsPanel(false); }}>
-                {isMobile ? <ToolbarGlyph name="history" size={20} /> : '阅读历史'}
-              </button>
+              <>
+                <button disabled={!readerReady} style={{ ...btnBase, padding: isMobile ? '8px 8px' : '8px 14px', fontSize: isMobile ? '16px' : '13px', opacity: readerReady ? 1 : 0.45, cursor: readerReady ? 'pointer' : 'not-allowed' }} data-panel-toggle onClick={() => { if (!readerReady) return; setShowHistoryPanel((v) => !v); setShowWatchlistPanel(false); setShowSettingsPanel(false); }}>
+                  {isMobile ? <ToolbarGlyph name="history" size={20} /> : '阅读历史'}
+                </button>
+                <button disabled={!readerReady} style={{ ...btnBase, padding: isMobile ? '8px 8px' : '8px 14px', fontSize: isMobile ? '16px' : '13px', opacity: readerReady ? 1 : 0.45, cursor: readerReady ? 'pointer' : 'not-allowed' }} data-panel-toggle onClick={() => { if (!readerReady) return; setShowWatchlistPanel((v) => !v); setShowHistoryPanel(false); setShowSettingsPanel(false); }}>
+                  {isMobile ? <ToolbarGlyph name="watchlist" size={20} /> : '待看归档'}
+                </button>
+              </>
             )}
           </div>
 
@@ -2280,7 +2410,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                     ? <ToolbarGlyph name="cover" size={18} />
                     : (coverSetting ? '设置中...' : coverSetPage === currentIndex + 1 ? '已设为封面' : '设为封面')}
                 </button>
-                <button style={{ ...btnBase, padding: isMobile ? '8px 10px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} data-panel-toggle onClick={() => { setShowSettingsPanel((v) => !v); setShowHistoryPanel(false); }}>
+                <button style={{ ...btnBase, padding: isMobile ? '8px 10px' : '8px 14px', fontSize: isMobile ? '16px' : '13px' }} data-panel-toggle onClick={() => { setShowSettingsPanel((v) => !v); setShowHistoryPanel(false); setShowWatchlistPanel(false); }}>
                   {isMobile ? <ToolbarGlyph name="settings" size={18} /> : '阅读设定'}
                 </button>
               </>
@@ -2351,108 +2481,25 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
           </div>
         )}
 
-        {/* ===== History Panel ===== */}
-        {showHistoryPanel && (
-          <div data-panel="history"
-            className="glass-panel dropdown-animate no-scrollbar"
-            style={{
-              position: 'absolute',
-              top: '62px',
-              left: '20px',
-              zIndex: 110,
-              padding: '18px',
-              borderRadius: '14px',
-              width: '360px',
-              maxHeight: '70vh',
-              overflowY: 'auto',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
-              border: '1px solid rgba(255,255,255,0.1)',
-            }}
-          >
-            <div style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
-              阅读历史
-            </div>
-            {historyList.length === 0 ? (
-              <div style={{ fontSize: '12px', color: 'var(--text-sub)', padding: '8px 0' }}>
-                {hideRead && getHistory().length > 0 ? '所有归档均已读完' : '暂无阅读历史'}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {historyList.map((h) => {
-                  const tags = (h.tags || '').split(',').map(t => t.trim()).filter(Boolean);
-                  const showNs = new Set(['category', 'parody', 'male', 'female']);
-                  const filteredTags = tags.filter(t => showNs.has(t.split(':')[0].toLowerCase()));
-                  const displayTags = filteredTags.map(t => {
-                    const ci = t.indexOf(':');
-                    if (ci <= 0) return t;
-                    const ns = t.slice(0, ci).toLowerCase();
-                    const val = t.slice(ci + 1).trim();
-                    return translateTag(ns, val);
-                  }).filter(Boolean).slice(0, 6);
-
-                  return (
-                    <div
-                      key={h.id}
-                      onClick={() => { navigateToArchive(h.id); }}
-                      style={{
-                        display: 'flex', gap: '10px', alignItems: 'center',
-                        padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                    >
-                      <HistoryThumb archiveId={h.id} cacheOnly={assetCacheOnly} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', color: '#e3e9f3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {h.title}
-                        </div>
-                        {displayTags.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
-                            {displayTags.map((dt, i) => (
-                              <span key={i} style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', color: '#aaa', background: 'rgba(255,255,255,0.08)', whiteSpace: 'nowrap' }}>{dt}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ flexShrink: 0, textAlign: 'right', minWidth: '52px' }}>
-                        <div style={{ fontSize: '10px', color: 'var(--text-sub)' }}>
-                          {new Date(h.time).toLocaleDateString()}
-                        </div>
-                        <div style={{ fontSize: '10px', color: 'var(--accent)', marginTop: '2px' }}>
-                          {h.page}/{h.total}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setHistoryDeleteTarget(h);
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#8f97a8',
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          lineHeight: 1,
-                          padding: '2px 4px',
-                          borderRadius: '4px',
-                          flexShrink: 0,
-                        }}
-                        title="删除历史"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-          </div>
+        {viewMode !== 'immersive' && showHistoryPanel && (
+          <ReaderArchiveListPanel
+            type="history"
+            title="阅读历史"
+            items={historyList}
+            emptyMessage={hideRead && getHistory().length > 0 ? '所有归档均已读完' : '暂无阅读历史'}
+            cacheOnly={assetCacheOnly}
+            onDelete={setHistoryDeleteTarget}
+          />
+        )}
+        {viewMode !== 'immersive' && showWatchlistPanel && (
+          <ReaderArchiveListPanel
+            type="watchlist"
+            title="待看归档"
+            items={watchlistEntries}
+            emptyMessage="暂无待看归档"
+            cacheOnly={assetCacheOnly}
+            onDelete={handleRemoveWatchlist}
+          />
         )}
 
         {/* ===== Mode Switch ===== */}

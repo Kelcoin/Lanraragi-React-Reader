@@ -203,6 +203,8 @@ function renderToolbarGlyph(name) {
       return <path d="M19 12H5M12 19l-7-7 7-7" />;
     case 'history':
       return <path d="M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />;
+    case 'watchlist':
+      return <path d="M6 4.5h12v16l-6-3-6 3v-16z" />;
     case 'play':
       return <path d="M5 3l14 9-14 9V3z" />;
     case 'pause':
