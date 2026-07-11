@@ -66,16 +66,11 @@ export function useHorizontalScroller() {
     if (node) node.addEventListener('wheel', handleWheel, { capture: true, passive: false });
   }, [handleWheel]);
 
-  useEffect(() => () => {
-    if (scrollerElRef.current) {
-      scrollerElRef.current.removeEventListener('wheel', handleWheel, true);
-      scrollerElRef.current = null;
-    }
-  }, [handleWheel]);
-
   const onWheelCapture = useCallback(() => {
-    // Native passive:false listener does the real wheel lock. Keeping this
-    // prop harmless preserves existing call sites during incremental rollout.
+    // The callback ref exclusively owns the native passive:false listener.
+    // Do not mirror its cleanup in an effect: React StrictMode runs effect
+    // cleanup/setup without necessarily re-running an unchanged callback ref,
+    // which would leave the mounted scroller without a wheel listener.
   }, []);
 
   const onScroll = useCallback((e) => {
