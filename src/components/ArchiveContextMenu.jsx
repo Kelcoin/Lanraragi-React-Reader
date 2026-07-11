@@ -34,11 +34,11 @@ function MenuButton({ children, danger = false, onClick }) {
   );
 }
 
-export default function ArchiveContextMenu({ menu, onClose, onRead, onDownload, onDelete, onCopyLink, onRemoveHistory, onAddWatchlist, onRemoveWatchlist }) {
+export default function ArchiveContextMenu({ menu, onClose, onRead, onEditMetadata, onDownload, onDelete, onCopyLink, onRemoveHistory, onAddWatchlist, onRemoveWatchlist }) {
   const showRemoveHistory = !!menu?.showRemoveHistory && !!onRemoveHistory;
   const showRemoveWatchlist = !!menu?.showRemoveWatchlist && !!onRemoveWatchlist;
   const showAddWatchlist = !showRemoveWatchlist && !!onAddWatchlist;
-  const extraRows = (showRemoveHistory ? 1 : 0) + (showRemoveWatchlist || showAddWatchlist ? 1 : 0) + (onDelete ? 1 : 0);
+  const extraRows = (showRemoveHistory ? 1 : 0) + (showRemoveWatchlist || showAddWatchlist ? 1 : 0) + (onDelete ? 1 : 0) + (onEditMetadata ? 1 : 0);
   const menuHeight = 142 + extraRows * 36;
   const pos = useMemo(() => clampMenuPosition(menu?.x || 0, menu?.y || 0, menuHeight), [menu?.x, menu?.y, menuHeight]);
 
@@ -89,6 +89,7 @@ export default function ArchiveContextMenu({ menu, onClose, onRead, onDownload, 
       }}
     >
       <MenuButton onClick={run(onRead)}>阅读</MenuButton>
+      {onEditMetadata && <MenuButton onClick={run(onEditMetadata)}>编辑元数据</MenuButton>}
       <MenuButton onClick={run(onDownload)}>下载</MenuButton>
       <MenuButton onClick={run(onCopyLink)}>复制链接</MenuButton>
       {showAddWatchlist && <MenuButton onClick={run(onAddWatchlist)}>加入待看</MenuButton>}

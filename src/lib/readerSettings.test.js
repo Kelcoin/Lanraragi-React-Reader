@@ -8,3 +8,8 @@ test('normalizes old and conflicting reader settings', () => {
   assert.equal(value.rotateWidePagesEnabled, false);
   assert.equal(value.pageIndicatorVisibilityMode, 'auto');
 });
+test('migrates the old double-page checkbox into reading layout', () => {
+  const value = normalizeReaderSettings({ readingLayout: 'single', doublePageEnabled: true });
+  assert.equal(value.readingLayout, 'double');
+  assert.equal(value.doublePageEnabled, true);
+});

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
+import { navigateToMetadata } from '../lib/navigation';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TagSuggest from '../components/TagSuggest';
 import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
@@ -322,6 +323,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
         menu={menu}
         onClose={() => setMenu(null)}
         onRead={(archive) => onSelectArchive(archive.arcid || archive.id)}
+        onEditMetadata={(archive) => navigateToMetadata(archive.arcid || archive.id)}
         onDownload={handleDownload}
         onCopyLink={handleCopyLink}
         onRemoveWatchlist={(archive) => requestSingleDelete(archive)}

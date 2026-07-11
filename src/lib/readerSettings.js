@@ -12,13 +12,14 @@ export const DEFAULT_READER_SETTINGS = Object.freeze({
 });
 
 const allowed = {
-  direction: ['ltr', 'rtl'], readingLayout: ['single', 'webtoon', 'auto'],
+  direction: ['ltr', 'rtl'], readingLayout: ['single', 'double', 'webtoon', 'auto'],
   scaleMode: ['fit-screen', 'fit-width', 'fit-height', 'original'],
   pageIndicatorVisibilityMode: ['pinned', 'hidden', 'auto'],
 };
 
 export function normalizeReaderSettings(value = {}) {
   const next = { ...DEFAULT_READER_SETTINGS, ...(value && typeof value === 'object' ? value : {}) };
+  if (value?.doublePageEnabled && (!value.readingLayout || value.readingLayout === 'single')) next.readingLayout = 'double';
   for (const [key, choices] of Object.entries(allowed)) {
     if (!choices.includes(next[key])) next[key] = DEFAULT_READER_SETTINGS[key];
   }
@@ -28,7 +29,7 @@ export function normalizeReaderSettings(value = {}) {
   next.preloadCount = Math.max(0, Math.min(10, Number(next.preloadCount) || 0));
   next.webtoonGap = Math.max(0, Math.min(64, Number(next.webtoonGap) || 0));
   next.doublePageGap = Math.max(0, Math.min(64, Number(next.doublePageGap) || 0));
-  if (next.readingLayout === 'webtoon') next.doublePageEnabled = false;
+  next.doublePageEnabled = next.readingLayout === 'double';
   if (next.splitWidePagesEnabled) next.rotateWidePagesEnabled = false;
   return next;
 }

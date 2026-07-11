@@ -20,7 +20,7 @@ import { clearImageCache } from '../lib/imageCache';
 import { claimColdRestoreRoute, consumeHomeNavigationSnapshot, getBootState, loadHomeSnapshot, markBackground, saveHomeNavigationSnapshot, saveHomeSnapshot } from '../lib/sessionState';
 import { getStoredServerInfo, loadServerInfo } from '../lib/serverInfoCache';
 import { useHorizontalScroller } from '../lib/horizontalScroller';
-import { navigateDeduplicate, navigateHistory, navigateHome, navigateWatchlist } from '../lib/navigation';
+import { navigateDeduplicate, navigateHistory, navigateHome, navigateToMetadata, navigateWatchlist } from '../lib/navigation';
 
 const FILTER_KEY = 'lrr_filter';
 const PRESETS_KEY = 'lrr_filter_presets';
@@ -2425,6 +2425,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       menu={archiveMenu}
       onClose={() => setArchiveMenu(null)}
       onRead={(archive) => handleSelectArchive(archive.arcid || archive.id)}
+      onEditMetadata={(archive) => navigateToMetadata(archive.arcid || archive.id)}
       onDownload={handleArchiveDownload}
       onCopyLink={handleArchiveCopyLink}
       onDelete={requestArchiveDelete}
