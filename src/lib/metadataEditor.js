@@ -39,5 +39,7 @@ export function formatMetadataTag(tag, translate = (_namespace, value) => value)
     try { const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`); return `来源：${url.hostname}${url.pathname === '/' ? '' : url.pathname}`; } catch { return `来源：${value}`; }
   }
   const translated = translate(namespace, value);
-  return translated && translated !== value ? translated : raw;
+  const namespaceLabels = { artist: '作者', uploader: '上传者', female: '女性', male: '男性', mixed: '混合', other: '其他', parody: '原作', character: '角色', group: '社团', series: '系列', language: '语言', category: '分类', general: '通用' };
+  const namespaceLabel = namespaceLabels[namespace] || namespace;
+  return `${namespaceLabel}：${translated || value}`;
 }

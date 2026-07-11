@@ -9,5 +9,7 @@ test('plugin options use unique API namespaces instead of object strings', () =>
 test('formats technical metadata tags for people', () => {
   assert.match(formatMetadataTag('date_added:1770912980'), /^添加日期：\d{4}年\d+月\d+日$/);
   assert.equal(formatMetadataTag('source:e-hentai.org/g/123/abc'), '来源：e-hentai.org/g/123/abc');
-  assert.equal(formatMetadataTag('female:kissing', () => '亲吻'), '亲吻');
+  assert.equal(formatMetadataTag('female:kissing', () => '亲吻'), '女性：亲吻');
+  assert.equal(formatMetadataTag('artist:someone'), '作者：someone');
+  assert.equal(formatMetadataTag('uploader:kelcoin'), '上传者：kelcoin');
 });
