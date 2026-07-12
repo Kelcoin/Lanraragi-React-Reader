@@ -17,6 +17,7 @@ import CacheSettings from '../components/CacheSettings';
 import EhFavoriteDeleteSwitch from '../components/EhFavoriteDeleteSwitch';
 import ToggleSwitch from '../components/ToggleSwitch';
 import AppVersion from '../components/AppVersion';
+import SettingHint from '../components/SettingHint';
 import { HomeSectionGlyph, ThemeModeGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
 import { getStoredCategories, loadCategories, startCategoriesUpdateTimer, stopCategoriesUpdateTimer } from '../lib/categories';
 import { clearImageCache } from '../lib/imageCache';
@@ -2148,6 +2149,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             <div style={{ color: 'var(--text-sub)' }}>— 已经到底啦 —</div>
           ))}
         </div>
+        <div style={{ padding: '6px 0 0' }}>
+          <AppVersion compact />
+        </div>
       </section>
     </div>
     {showConfig && createPortal(
@@ -2177,25 +2181,25 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
 
           <CacheSettings />
 
-          <div className="settings-row" title="让横版或方形封面按竖向卡片比例显示，书库网格会更整齐。">
-            <span className="settings-row-title">裁剪封面</span>
+          <div className="settings-row">
+            <SettingHint text="让横版或方形封面按竖向卡片比例显示，书库网格会更整齐。">裁剪封面</SettingHint>
             <ToggleSwitch checked={cropCover} onChange={handleToggleCropCover} label="裁剪封面" />
           </div>
 
-          <div className="settings-row" title="阅读历史中不显示已经读到最后一页的归档，继续阅读列表会更短。">
-            <span className="settings-row-title">隐藏已读完</span>
+          <div className="settings-row">
+            <SettingHint text="阅读历史中不显示已经读到最后一页的归档，继续阅读列表会更短。">隐藏已读完</SettingHint>
             <ToggleSwitch checked={hideRead} onChange={handleToggleHideRead} label="隐藏已读完" />
           </div>
 
           <div className="settings-section">
             <div className="settings-section-title">EH 评论区</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label className="settings-row" title="在阅读器里加载来源画廊的评论，需要可访问 EH/EX 的 Cookie。">
-                <span className="settings-row-title">启用 EH 评论区</span>
+              <label className="settings-row">
+                <SettingHint text="在阅读器里加载来源画廊的评论，需要可访问 EH/EX 的 Cookie。">启用 EH 评论区</SettingHint>
                 <ToggleSwitch checked={readerSettings.ehEnabled} onChange={() => updateReaderSettings((s) => ({ ...s, ehEnabled: !s.ehEnabled }))} label="启用 EH 评论区" />
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label className="settings-field-label" title="至少需要能访问目标画廊的 Cookie；同步删除收藏夹还需要 ipb_member_id 与 ipb_pass_hash。">EH Cookie</label>
+                <SettingHint className="settings-field-label" text="至少需要能访问目标画廊的 Cookie；同步删除收藏夹还需要 ipb_member_id 与 ipb_pass_hash。">EH Cookie</SettingHint>
                 <input type="text" className="input-glass"
                   value={readerSettings.ehCookie || ''}
                   onChange={(e) => updateReaderSettings((s) => ({ ...s, ehCookie: e.target.value }))}
@@ -2205,8 +2209,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               </div>
               {readerSettings.ehEnabled && (
                 <>
-                  <label className="settings-row" title="低于这个分数的评论会被隐藏，填 0 表示不过滤。">
-                    <span className="settings-row-title">最低展示分数</span>
+                  <label className="settings-row">
+                    <SettingHint text="低于这个分数的评论会被隐藏，填 0 表示不过滤。">最低展示分数</SettingHint>
                     <input type="text" inputMode="numeric" pattern="-?[0-9]*" className="input-glass no-spinner"
                       value={String(readerSettings.ehMinScore)}
                       onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= -999) updateReaderSettings((s) => ({ ...s, ehMinScore: n })); else if (v === '' || v === '-') updateReaderSettings((s) => ({ ...s, ehMinScore: 0 })); }}
@@ -2214,8 +2218,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                       style={{ width: '52px', padding: '5px 6px', fontSize: '12px', textAlign: 'center' }}
                     />
                   </label>
-                  <label className="settings-row" title="单个归档最多显示的评论数量，范围 1 到 200。">
-                    <span className="settings-row-title">最多展示数量</span>
+                  <label className="settings-row">
+                    <SettingHint text="单个归档最多显示的评论数量，范围 1 到 200。">最多展示数量</SettingHint>
                     <input type="text" inputMode="numeric" pattern="[0-9]*" className="input-glass no-spinner"
                       value={String(readerSettings.ehMaxComments)}
                       onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= 1 && n <= 200) updateReaderSettings((s) => ({ ...s, ehMaxComments: n })); }}
@@ -2223,8 +2227,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                       style={{ width: '52px', padding: '5px 6px', fontSize: '12px', textAlign: 'center' }}
                     />
                   </label>
-                  <label className="settings-row" title="按评论分数或发布时间排序。">
-                    <span className="settings-row-title">排序方式</span>
+                  <label className="settings-row">
+                    <SettingHint text="按评论分数或发布时间排序。">排序方式</SettingHint>
                     <div style={{ width: '110px', flexShrink: 0 }}>
                       <CustomSelect
                         value={readerSettings.ehSortMethod}
@@ -2234,8 +2238,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                       />
                     </div>
                   </label>
-                  <label className="settings-row" title="倒序优先显示最高分或最新评论，正序则相反。">
-                    <span className="settings-row-title">排序方向</span>
+                  <label className="settings-row">
+                    <SettingHint text="倒序优先显示最高分或最新评论，正序则相反。">排序方向</SettingHint>
                     <div style={{ width: '110px', flexShrink: 0 }}>
                       <CustomSelect
                         value={readerSettings.ehSortOrder}
@@ -2250,8 +2254,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             </div>
           </div>
 
-          <div className="settings-row" title={ehFavoriteSyncReady ? '删除归档时同步移除 source 指向的 EH/EX 收藏；删除弹窗里仍可单次取消。' : '需要先配置 Worker、访问 Token，以及包含 ipb_member_id / ipb_pass_hash 的 EH Cookie。'}>
-            <span className="settings-row-title">同步删除 E 站收藏夹</span>
+          <div className="settings-row">
+            <SettingHint text={ehFavoriteSyncReady ? '删除归档时同步移除 source 指向的 EH/EX 收藏；删除弹窗里仍可单次取消。' : '需要先配置 Worker、访问 Token，以及包含 ipb_member_id / ipb_pass_hash 的 EH Cookie。'}>同步删除 E 站收藏夹</SettingHint>
             <ToggleSwitch checked={ehFavoriteDeleteSync && ehFavoriteSyncReady} onChange={handleToggleEhFavoriteDeleteSync} disabled={!ehFavoriteSyncReady} label="同步删除 E 站收藏夹" />
           </div>
 
@@ -2259,9 +2263,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             <div className="settings-section-title">Worker 设置</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label className="settings-field-label" title="用于多设备同步阅读历史、待看和删除收藏夹等 Worker 功能。">
-                  Cloudflare Worker 端点
-                </label>
+                <SettingHint className="settings-field-label" text="用于多设备同步阅读历史、待看和删除收藏夹等 Worker 功能。">Cloudflare Worker 端点</SettingHint>
                 <input type="text" className="input-glass"
                   value={cfgWorkerUrl}
                   onChange={(e) => setCfgWorkerUrl(e.target.value)}
@@ -2271,9 +2273,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               </div>
 
               <div>
-                <label className="settings-field-label" title="同一 Token 下的设备会共享同步数据；Token 需要预先写入 Worker KV 的 tokens 字段。">
-                  访问 Token
-                </label>
+                <SettingHint className="settings-field-label" text="同一 Token 下的设备会共享同步数据；Token 需要预先写入 Worker KV 的 tokens 字段。">访问 Token</SettingHint>
                 <input type="password" className="input-glass"
                   value={cfgSyncToken}
                   onChange={(e) => setCfgSyncToken(e.target.value)}
@@ -2292,8 +2292,6 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             </div>
             <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '14px' }} />
           </div>
-
-          <AppVersion compact />
 
           </div>
 
@@ -2339,6 +2337,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               style={{ flex: 1, padding: '10px' }}>
               保存
             </button>
+          </div>
+          <div style={{ padding: '0 28px 20px' }}>
+            <AppVersion compact />
           </div>
         </form>
       </div>,

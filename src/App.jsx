@@ -144,6 +144,7 @@ export default function App() {
     return (
       <>
         <div className="login-shell">
+          <div className="login-stack">
           <form onSubmit={handleConnect} className="glass-panel login-card">
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
               <h2 className="login-title">配置 LANraragi</h2>
@@ -197,8 +198,9 @@ export default function App() {
                 {loginError}
               </div>
             )}
-            <AppVersion />
           </form>
+          <AppVersion />
+          </div>
         </div>
         <PwaStatus />
       </>
