@@ -1,4 +1,5 @@
 import { getSyncToken, getWorkerUrl } from './worker-config';
+import { decorateArchiveRecord, hydrateArchiveRecords, rememberArchiveMetadata } from './archiveMetadataCache';
 
 const LOCAL_HISTORY_KEY = 'lrr_history';
 const LOCAL_HIDE_READ_KEY = 'lrr_hide_read';
@@ -19,11 +20,11 @@ export function hasRemoteHistory() {
 }
 
 function normalizeHistoryItem(item) {
-  if (!item?.id) return null;
+  const id = String(item?.id || item?.arcid || '').trim();
+  if (!id) return null;
   return {
-    ...item,
+    id,
     page: Number(item.page) || 0,
-    total: Number(item.total) || 0,
     time: Number(item.time) || 0,
   };
 }
@@ -66,22 +67,6 @@ function writeHideReadCache(v) {
   emitHistoryChanged();
 }
 
-async function buildJsonRequest(payload) {
-  const text = JSON.stringify(payload);
-  const headers = { 'Content-Type': 'application/json' };
-  if (text.length < 2048 || typeof CompressionStream === 'undefined') {
-    return { headers, body: text };
-  }
-
-  try {
-    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
-    const body = await new Response(stream).blob();
-    return { headers: { ...headers, 'Content-Encoding': 'gzip' }, body };
-  } catch {
-    return { headers, body: text };
-  }
-}
-
 async function workerJson(endpoint, { method = 'GET', body = null } = {}) {
   const cfg = remoteConfig();
   if (!cfg) throw new Error('未配置 Worker');
@@ -90,9 +75,8 @@ async function workerJson(endpoint, { method = 'GET', body = null } = {}) {
     headers: { 'x-sync-token': cfg.token },
   };
   if (body) {
-    const req = await buildJsonRequest(body);
-    init.headers = { ...init.headers, ...req.headers };
-    init.body = req.body;
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
   }
   const res = await fetch(cfg.base + endpoint, init);
   if (!res.ok) throw new Error(`Worker Error: ${res.status}`);
@@ -101,35 +85,49 @@ async function workerJson(endpoint, { method = 'GET', body = null } = {}) {
 }
 
 function archiveToHistoryItem(archive, page) {
+  rememberArchiveMetadata(archive);
   return {
     id: archive.arcid,
-    title: archive.title,
-    tags: archive.tags || '',
     page,
-    total: archive.pagecount,
     time: Date.now(),
   };
 }
 
-export const getHistory = () => sortHistoryByTime(safeReadJson(activeHistoryKey(), []));
+function getStoredHistory() {
+  return sortHistoryByTime(safeReadJson(activeHistoryKey(), []));
+}
+
+export const getHistory = () => getStoredHistory().map(decorateArchiveRecord).filter(Boolean);
 
 export async function loadHistoryState() {
-  if (!hasRemoteHistory()) {
-    return { histories: getHistory(), hideRead: getHideRead(), remote: false };
+  const remote = hasRemoteHistory();
+  let histories;
+  let hideRead;
+  let retentionDays = 0;
+
+  if (remote) {
+    const data = await workerJson('/history');
+    histories = sortHistoryByTime(data?.histories || []);
+    hideRead = !!data?.hideRead;
+    retentionDays = data?.retentionDays || 0;
+    localStorage.setItem(REMOTE_HISTORY_CACHE_KEY, JSON.stringify(histories));
+    localStorage.setItem(REMOTE_HIDE_READ_CACHE_KEY, hideRead ? '1' : '0');
+  } else {
+    histories = getStoredHistory();
+    hideRead = getHideRead();
+    writeHistoryCache(histories, { notify: false });
   }
 
-  const data = await workerJson('/history');
-  const histories = sortHistoryByTime(data?.histories || []);
-  localStorage.setItem(REMOTE_HISTORY_CACHE_KEY, JSON.stringify(histories));
-  localStorage.setItem(REMOTE_HIDE_READ_CACHE_KEY, data?.hideRead ? '1' : '0');
+  const hydrated = await hydrateArchiveRecords(histories);
+  if (hydrated.missingIds.length > 0) await pruneHistoryItems(hydrated.missingIds);
   emitHistoryChanged();
-  return { histories, hideRead: !!data?.hideRead, remote: true, retentionDays: data?.retentionDays || 0 };
+  return { histories: hydrated.items, hideRead, remote, retentionDays };
 }
 
 export const saveHistory = async (archive, page) => {
   if (!archive?.arcid) return false;
   const item = archiveToHistoryItem(archive, page);
-  const history = getHistory().filter((h) => h.id !== item.id);
+  const history = getStoredHistory().filter((h) => h.id !== item.id);
   writeHistoryCache([...history, item]);
 
   if (!hasRemoteHistory()) return true;
@@ -169,7 +167,7 @@ export const replaceAllHistory = async (list) => {
 export const removeHistoryItems = async (archiveIds) => {
   const removeSet = new Set((Array.isArray(archiveIds) ? archiveIds : []).filter(Boolean));
   if (removeSet.size === 0) return 0;
-  const before = getHistory();
+  const before = getStoredHistory();
   const next = before.filter((item) => !removeSet.has(item.id));
   const removed = before.length - next.length;
   if (removed === 0) return 0;
@@ -187,7 +185,7 @@ export const removeHistoryItem = async (archiveId) => removeHistoryItems([archiv
 export const pruneHistoryItems = async (archiveIds) => {
   const removeSet = new Set((Array.isArray(archiveIds) ? archiveIds : []).filter(Boolean));
   if (removeSet.size === 0) return 0;
-  const before = getHistory();
+  const before = getStoredHistory();
   const next = before.filter((item) => !removeSet.has(item.id));
   const removed = before.length - next.length;
   if (removed === 0) return 0;

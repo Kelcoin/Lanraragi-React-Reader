@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { lrrApi } from '../lib/api';
-import { getHistory, getHideRead, setHideRead, getCropCover, setCropCover, getArchiveBrowseMode, setArchiveBrowseMode, removeHistoryItem, loadHistoryState, hasRemoteHistory } from '../lib/history';
-import { addWatchlistItem, getWatchlist, hasRemoteWatchlist, loadWatchlistState, removeWatchlistItem, removeWatchlistItems } from '../lib/watchlist';
+import { getHistory, getHideRead, setHideRead, getCropCover, setCropCover, getArchiveBrowseMode, setArchiveBrowseMode, removeHistoryItem, loadHistoryState } from '../lib/history';
+import { addWatchlistItem, getWatchlist, loadWatchlistState, removeWatchlistItem, removeWatchlistItems } from '../lib/watchlist';
 import { loadTagDB, startTagDBUpdateTimer, stopTagDBUpdateTimer } from '../lib/tags';
 import { getWorkerUrl, setWorkerUrl, getSyncToken, setSyncToken, exportConfig, importConfig } from '../lib/worker-config';
 import { runHistoryExistenceCheck } from '../lib/historyMaintenance';
@@ -670,6 +670,13 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   useEffect(() => {
     if (!navigationRestoreRef.current || !homeSnapshot) return undefined;
     let cancelled = false;
+    let innerFrame = 0;
+    const interactionEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    const stopRestore = () => {
+      cancelled = true;
+      navigationRestoreRef.current = false;
+    };
+    interactionEvents.forEach((eventName) => window.addEventListener(eventName, stopRestore, { passive: true, once: true }));
     const restoreScroll = () => {
       if (cancelled) return;
       if (typeof homeSnapshot.historyScrollLeft === 'number') {
@@ -687,17 +694,17 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       if (typeof homeSnapshot.scrollY === 'number') {
         window.scrollTo({ top: homeSnapshot.scrollY, left: 0, behavior: 'auto' });
       }
-    };
-    const frame = requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
-    const timers = [60, 180, 420, 900, 1500].map((delayMs) => setTimeout(restoreScroll, delayMs));
-    const releaseTimer = setTimeout(() => {
       navigationRestoreRef.current = false;
-    }, 1700);
+      interactionEvents.forEach((eventName) => window.removeEventListener(eventName, stopRestore));
+    };
+    const frame = requestAnimationFrame(() => {
+      innerFrame = requestAnimationFrame(restoreScroll);
+    });
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
-      timers.forEach(clearTimeout);
-      clearTimeout(releaseTimer);
+      if (innerFrame) cancelAnimationFrame(innerFrame);
+      interactionEvents.forEach((eventName) => window.removeEventListener(eventName, stopRestore));
     };
   }, [getHistoryScrollerNode, getRandomScrollerNode, getWatchlistScrollerNode, homeSnapshot]);
 
@@ -798,11 +805,11 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     writeFilter(filter);
   }, [filter]);
 
-  // On mount: load history from Worker when configured, otherwise local storage.
+  // Load minimal history state, then hydrate display metadata from LANraragi by arcid.
   useEffect(() => {
     (async () => {
       setHistory(getHistory());
-      if (hasRemoteHistory() && !coldRestoreRef.current) {
+      if (!coldRestoreRef.current) {
         loadHistoryState().then((state) => {
           setHistory(state.histories);
           setHideReadState(state.hideRead);
@@ -825,7 +832,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
 
   useEffect(() => {
     setWatchlist(getWatchlist());
-    if (hasRemoteWatchlist() && !coldRestoreRef.current) {
+    if (!coldRestoreRef.current) {
       loadWatchlistState().then((state) => setWatchlist(state.items)).catch(() => setWatchlist(getWatchlist()));
     }
   }, []);

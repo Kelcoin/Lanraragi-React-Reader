@@ -9,7 +9,7 @@ import { getCropCover } from '../lib/history';
 import { lrrApi } from '../lib/api';
 import { archiveMatchesSearch } from '../lib/archiveSearch';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
-import { getWatchlist, hasRemoteWatchlist, loadWatchlistState, removeWatchlistItems } from '../lib/watchlist';
+import { getWatchlist, loadWatchlistState, removeWatchlistItems } from '../lib/watchlist';
 
 function HeaderGlyph() {
   return <HomeSectionGlyph name="watchlist" size={24} color={getSectionGlyphColor('watchlist')} />;
@@ -28,9 +28,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
   const [isNarrow, setIsNarrow] = useState(window.innerWidth < 600);
 
   useEffect(() => {
-    if (hasRemoteWatchlist()) {
-      loadWatchlistState().then((state) => setItems(state.items)).catch(() => setItems(getWatchlist()));
-    }
+    loadWatchlistState().then((state) => setItems(state.items)).catch(() => setItems(getWatchlist()));
   }, []);
 
   useEffect(() => {

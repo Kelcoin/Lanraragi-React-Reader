@@ -10,12 +10,27 @@ const CORS = {
 };
 
 const DEDUPE_NON_DUP_KEY = 'dedupe:non-duplicates';
+const SYNC_SCHEMA_VERSION = 2;
+const PROJECT_NAME = 'LANraragi React Reader';
+const PROJECT_URL = 'https://github.com/Kelcoin/Lanraragi-React-Reader';
+const FALLBACK_APP_VERSION = 'v1.1.0+944d658';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: Object.assign({}, CORS, { 'Content-Type': 'application/json' }),
   });
+}
+
+async function readJsonBody(request) {
+  const encoding = (request.headers.get('content-encoding') || '').trim().toLowerCase();
+  if (!encoding || encoding === 'identity') return request.json();
+  if (encoding !== 'gzip') throw new Error('Unsupported Content-Encoding: ' + encoding);
+  if (!request.body || typeof DecompressionStream === 'undefined') {
+    throw new Error('Gzip request decoding is unavailable');
+  }
+  const stream = request.body.pipeThrough(new DecompressionStream('gzip'));
+  return new Response(stream, { headers: { 'Content-Type': 'application/json' } }).json();
 }
 
 function text(data, status = 200, extraHeaders = {}) {
@@ -520,11 +535,51 @@ function historyTimestamp(item) {
   return value > 0 && value < 1e12 ? value * 1000 : value;
 }
 
+function normalizeHistoryItems(values) {
+  const merged = new Map();
+  for (const item of Array.isArray(values) ? values : []) {
+    const id = String(item?.id || item?.arcid || '').trim();
+    if (!id) continue;
+    const normalized = {
+      id,
+      page: Math.max(0, Number(item.page) || 0),
+      time: historyTimestamp(item),
+    };
+    const old = merged.get(id);
+    if (!old || normalized.time >= old.time) merged.set(id, normalized);
+  }
+  return Array.from(merged.values());
+}
+
+function normalizeDeletedItems(values) {
+  const merged = new Map();
+  for (const item of Array.isArray(values) ? values : []) {
+    const id = String(item?.id || item?.arcid || '').trim();
+    if (!id) continue;
+    const deletedAt = Number(item.deletedAt) || 0;
+    if (deletedAt >= (merged.get(id) || 0)) merged.set(id, deletedAt);
+  }
+  return Array.from(merged.entries())
+    .map(([id, deletedAt]) => ({ id, deletedAt }))
+    .sort((a, b) => b.deletedAt - a.deletedAt)
+    .slice(0, 200);
+}
+
 function pruneHistoriesByRetention(histories, retentionDays, now = Date.now()) {
   const cutoff = now - retentionDays * 24 * 60 * 60 * 1000;
-  return (Array.isArray(histories) ? histories : [])
+  return normalizeHistoryItems(histories)
     .filter((item) => item?.id && historyTimestamp(item) >= cutoff)
     .sort((a, b) => historyTimestamp(b) - historyTimestamp(a));
+}
+
+function compactHistoryState(state, retentionDays) {
+  return {
+    schemaVersion: SYNC_SCHEMA_VERSION,
+    histories: pruneHistoriesByRetention(state?.histories, retentionDays),
+    hideRead: !!state?.hideRead,
+    deleted: normalizeDeletedItems(state?.deleted),
+    lastSync: Number(state?.lastSync) || 0,
+  };
 }
 
 async function getHistory(request) {
@@ -535,16 +590,15 @@ async function getHistory(request) {
   const token = getToken(request);
   try {
     const raw = await HISTORY_KV.get('history:' + token);
-    if (!raw) return json({ histories: [], hideRead: false, deleted: [], lastSync: 0 });
+    if (!raw) return json({ schemaVersion: SYNC_SCHEMA_VERSION, histories: [], hideRead: false, deleted: [], lastSync: 0 });
     const state = JSON.parse(raw);
     const retentionDays = await getHistoryRetentionDays();
-    const histories = pruneHistoriesByRetention(state.histories, retentionDays);
-    if (histories.length !== (Array.isArray(state.histories) ? state.histories.length : 0)) {
-      state.histories = histories;
-      state.lastSync = Date.now();
-      await HISTORY_KV.put('history:' + token, JSON.stringify(state));
+    const compacted = compactHistoryState(state, retentionDays);
+    if (JSON.stringify(compacted) !== JSON.stringify(state)) {
+      compacted.lastSync = Date.now();
+      await HISTORY_KV.put('history:' + token, JSON.stringify(compacted));
     }
-    return json(state);
+    return json({ ...compacted, retentionDays });
   } catch (err) {
     return json({ error: 'KV read failed: ' + err.message }, 500);
   }
@@ -558,8 +612,8 @@ async function putHistory(request) {
   const token = getToken(request);
 
   let payload;
-  try { payload = await request.json(); } catch {
-    return json({ error: 'Invalid JSON' }, 400);
+  try { payload = await readJsonBody(request); } catch (err) {
+    return json({ error: 'Invalid JSON', detail: err.message }, 400);
   }
 
   const { histories, history, hideRead, deleted } = payload || {};
@@ -618,6 +672,7 @@ async function putHistory(request) {
 
   const retentionDays = await getHistoryRetentionDays();
   const result = {
+    schemaVersion: SYNC_SCHEMA_VERSION,
     histories: pruneHistoriesByRetention(Array.from(merged.values()), retentionDays),
     hideRead: hideRead !== undefined ? hideRead : existing.hideRead !== undefined ? existing.hideRead : false,
     deleted: normalizedDeleted,
@@ -640,8 +695,8 @@ async function deleteHistory(request) {
 
   const token = getToken(request);
   let payload;
-  try { payload = await request.json(); } catch {
-    return json({ error: 'Invalid JSON' }, 400);
+  try { payload = await readJsonBody(request); } catch (err) {
+    return json({ error: 'Invalid JSON', detail: err.message }, 400);
   }
 
   const ids = Array.isArray(payload?.ids) ? payload.ids.map(id => String(id).trim()).filter(Boolean) : [];
@@ -665,6 +720,7 @@ async function deleteHistory(request) {
 
   const retentionDays = await getHistoryRetentionDays();
   const result = {
+    schemaVersion: SYNC_SCHEMA_VERSION,
     histories: pruneHistoriesByRetention(
       (Array.isArray(existing.histories) ? existing.histories : []).filter((item) => item?.id && !removeSet.has(item.id)),
       retentionDays,
@@ -691,14 +747,7 @@ function normalizeWatchlistItems(values) {
   for (const item of Array.isArray(values) ? values : []) {
     const id = item?.id || item?.arcid;
     if (!id) continue;
-    const normalized = {
-      ...item,
-      id: String(id),
-      arcid: String(id),
-      title: item.title || String(id),
-      tags: item.tags || '',
-      addedAt: Number(item.addedAt) || Date.now(),
-    };
+    const normalized = { id: String(id), addedAt: Number(item.addedAt) || Date.now() };
     const old = merged.get(normalized.id);
     if (!old || (normalized.addedAt || 0) >= (old.addedAt || 0)) merged.set(normalized.id, normalized);
   }
@@ -724,7 +773,12 @@ async function getWatchlist(request) {
   const token = getToken(request);
   try {
     const state = await readWatchlistState(token);
-    return json({ items: normalizeWatchlistItems(state.items), lastSync: state.lastSync || 0 });
+    const compacted = { schemaVersion: SYNC_SCHEMA_VERSION, items: normalizeWatchlistItems(state.items), lastSync: Number(state.lastSync) || 0 };
+    if (JSON.stringify(compacted) !== JSON.stringify(state)) {
+      compacted.lastSync = Date.now();
+      await HISTORY_KV.put('watchlist:' + token, JSON.stringify(compacted));
+    }
+    return json(compacted);
   } catch (err) {
     return json({ error: 'KV read failed: ' + err.message }, 500);
   }
@@ -737,8 +791,8 @@ async function putWatchlist(request) {
 
   const token = getToken(request);
   let payload;
-  try { payload = await request.json(); } catch {
-    return json({ error: 'Invalid JSON' }, 400);
+  try { payload = await readJsonBody(request); } catch (err) {
+    return json({ error: 'Invalid JSON', detail: err.message }, 400);
   }
 
   const incoming = Array.isArray(payload?.items) ? payload.items : (payload?.item ? [payload.item] : []);
@@ -746,7 +800,7 @@ async function putWatchlist(request) {
 
   const existing = await readWatchlistState(token);
   const items = normalizeWatchlistItems([...(existing.items || []), ...incoming]);
-  const result = { items, lastSync: Date.now() };
+  const result = { schemaVersion: SYNC_SCHEMA_VERSION, items, lastSync: Date.now() };
   try {
     await HISTORY_KV.put('watchlist:' + token, JSON.stringify(result));
     return json({ ok: true, count: items.length });
@@ -762,8 +816,8 @@ async function deleteWatchlist(request) {
 
   const token = getToken(request);
   let payload;
-  try { payload = await request.json(); } catch {
-    return json({ error: 'Invalid JSON' }, 400);
+  try { payload = await readJsonBody(request); } catch (err) {
+    return json({ error: 'Invalid JSON', detail: err.message }, 400);
   }
 
   const ids = Array.isArray(payload?.ids) ? payload.ids.map(id => String(id).trim()).filter(Boolean) : [];
@@ -772,6 +826,7 @@ async function deleteWatchlist(request) {
 
   const existing = await readWatchlistState(token);
   const result = {
+    schemaVersion: SYNC_SCHEMA_VERSION,
     items: normalizeWatchlistItems(existing.items).filter((item) => !removeSet.has(item.id)),
     lastSync: Date.now(),
   };
@@ -987,6 +1042,9 @@ async function statusPage(request) {
       ? `<div class="stat"><span class="label">Token 认证</span><span class="ok">已启用 (${tokenCount} 个)</span></div>`
       : `<div class="stat"><span class="label">⚠ Token 认证</span><span class="err">已启用但 KV tokens 为空，所有受保护接口都会拒绝</span></div>`)
     : `<div class="stat"><span class="label">Token 认证</span><span class="err">强制启用</span></div>`;
+  const appVersion = typeof APP_VERSION !== 'undefined' && APP_VERSION
+    ? String(APP_VERSION)
+    : FALLBACK_APP_VERSION;
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -1011,7 +1069,10 @@ async function statusPage(request) {
   .warn { color:#fbbf24; font-size:13px; }
   .divider { border-top:1px solid rgba(255,255,255,0.06); margin:24px 0 20px; }
   .section-title { color:#9ca3af; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; }
-  .footer { font-size:11px; color:#4b5563; text-align:center; margin-top:20px; }
+  .footer { display:flex; align-items:center; justify-content:center; gap:9px; flex-wrap:wrap;
+            font-size:11px; color:#6b7280; text-align:center; margin-top:22px; }
+  .footer a { color:#60a5fa; text-decoration:none; }
+  .footer a:hover { color:#93c5fd; text-decoration:underline; }
   .card { max-width:560px; }
   .warning { border:1px solid rgba(248,113,113,.45); background:rgba(248,113,113,.12); color:#fecaca;
              padding:12px 14px; border-radius:10px; margin:0 0 18px; font-size:13px; line-height:1.5; }
@@ -1077,7 +1138,11 @@ async function statusPage(request) {
   </div>
   <div id="kvResult"></div>
 
-  <div class="footer">LRR Modern Reader · Cloudflare Worker</div>
+  <div class="footer">
+    <span>${PROJECT_NAME} · Cloudflare Worker</span>
+    <span>${appVersion}</span>
+    <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">GitHub</a>
+  </div>
 </div>
 <script>
 const result = document.getElementById('kvResult');

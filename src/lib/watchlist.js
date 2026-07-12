@@ -1,4 +1,5 @@
 import { getSyncToken, getWorkerUrl } from './worker-config';
+import { decorateArchiveRecord, hydrateArchiveRecords, rememberArchiveMetadata } from './archiveMetadataCache';
 
 const LOCAL_WATCHLIST_KEY = 'lrr_watchlist';
 const REMOTE_WATCHLIST_CACHE_KEY = 'lrr_watchlist_remote_cache';
@@ -32,14 +33,10 @@ function activeWatchlistKey() {
 }
 
 function normalizeWatchlistItem(item) {
-  const id = item?.id || item?.arcid;
+  const id = String(item?.id || item?.arcid || '').trim();
   if (!id) return null;
   return {
-    ...item,
-    id: String(id),
-    arcid: String(id),
-    title: item.title || String(id),
-    tags: item.tags || '',
+    id,
     addedAt: Number(item.addedAt) || Date.now(),
   };
 }
@@ -56,21 +53,6 @@ function writeWatchlistCache(list, { notify = true } = {}) {
   if (notify) emitWatchlistChanged();
 }
 
-async function buildJsonRequest(payload) {
-  const text = JSON.stringify(payload);
-  const headers = { 'Content-Type': 'application/json' };
-  if (text.length < 2048 || typeof CompressionStream === 'undefined') {
-    return { headers, body: text };
-  }
-  try {
-    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
-    const body = await new Response(stream).blob();
-    return { headers: { ...headers, 'Content-Encoding': 'gzip' }, body };
-  } catch {
-    return { headers, body: text };
-  }
-}
-
 async function workerJson(endpoint, { method = 'GET', body = null } = {}) {
   const cfg = remoteConfig();
   if (!cfg) throw new Error('未配置 Worker');
@@ -79,9 +61,8 @@ async function workerJson(endpoint, { method = 'GET', body = null } = {}) {
     headers: { 'x-sync-token': cfg.token },
   };
   if (body) {
-    const req = await buildJsonRequest(body);
-    init.headers = { ...init.headers, ...req.headers };
-    init.body = req.body;
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
   }
   const res = await fetch(cfg.base + endpoint, init);
   if (!res.ok) throw new Error(`Worker Error: ${res.status}`);
@@ -89,22 +70,37 @@ async function workerJson(endpoint, { method = 'GET', body = null } = {}) {
   return text ? JSON.parse(text) : null;
 }
 
-export const getWatchlist = () => sortWatchlist(safeReadJson(activeWatchlistKey(), []));
+function getStoredWatchlist() {
+  return sortWatchlist(safeReadJson(activeWatchlistKey(), []));
+}
+
+export const getWatchlist = () => getStoredWatchlist().map(decorateArchiveRecord).filter(Boolean);
 
 export async function loadWatchlistState() {
-  if (!hasRemoteWatchlist()) return { items: getWatchlist(), remote: false };
-  const data = await workerJson('/watchlist');
-  const items = sortWatchlist(data?.items || []);
-  localStorage.setItem(REMOTE_WATCHLIST_CACHE_KEY, JSON.stringify(items));
+  const remote = hasRemoteWatchlist();
+  let items;
+  let lastSync = 0;
+  if (remote) {
+    const data = await workerJson('/watchlist');
+    items = sortWatchlist(data?.items || []);
+    lastSync = data?.lastSync || 0;
+    localStorage.setItem(REMOTE_WATCHLIST_CACHE_KEY, JSON.stringify(items));
+  } else {
+    items = getStoredWatchlist();
+    writeWatchlistCache(items, { notify: false });
+  }
+  const hydrated = await hydrateArchiveRecords(items);
+  if (hydrated.missingIds.length > 0) await removeWatchlistItems(hydrated.missingIds);
   emitWatchlistChanged();
-  return { items, remote: true, lastSync: data?.lastSync || 0 };
+  return { items: hydrated.items, remote, lastSync };
 }
 
 export const addWatchlistItem = async (archive) => {
+  rememberArchiveMetadata(archive);
   const item = normalizeWatchlistItem(archive);
   if (!item) return false;
   item.addedAt = Date.now();
-  const next = getWatchlist().filter((entry) => entry.id !== item.id);
+  const next = getStoredWatchlist().filter((entry) => entry.id !== item.id);
   writeWatchlistCache([item, ...next]);
   if (!hasRemoteWatchlist()) return true;
   try {
@@ -118,7 +114,7 @@ export const addWatchlistItem = async (archive) => {
 export const removeWatchlistItems = async (archiveIds) => {
   const removeSet = new Set((Array.isArray(archiveIds) ? archiveIds : []).map(String).filter(Boolean));
   if (removeSet.size === 0) return 0;
-  const before = getWatchlist();
+  const before = getStoredWatchlist();
   const next = before.filter((item) => !removeSet.has(item.id));
   const removed = before.length - next.length;
   if (removed === 0) return 0;

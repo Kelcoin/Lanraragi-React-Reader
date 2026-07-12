@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { lrrApi } from '../lib/api';
-import { getHistory, saveHistory, getHideRead, removeHistoryItem, hasRemoteHistory, loadHistoryState } from '../lib/history';
-import { getWatchlist, hasRemoteWatchlist, loadWatchlistState, removeWatchlistItem } from '../lib/watchlist';
+import { getHistory, saveHistory, getHideRead, removeHistoryItem, loadHistoryState } from '../lib/history';
+import { getWatchlist, loadWatchlistState, removeWatchlistItem } from '../lib/watchlist';
 import { getReaderArchiveListMeta } from '../lib/readerArchiveList';
 import { isArchiveMissingError } from '../lib/historyMaintenance';
 import { translateTag, categorizeTags } from '../lib/tags';
@@ -939,16 +939,13 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   }, []);
 
   useEffect(() => {
-    if (!hasRemoteHistory()) return;
     loadHistoryState().then((state) => setHistoryEntries(state.histories)).catch(() => {});
   }, []);
 
   useEffect(() => {
     const refreshWatchlist = () => setWatchlistEntries(getWatchlist());
     window.addEventListener('lrr:watchlist-changed', refreshWatchlist);
-    if (hasRemoteWatchlist()) {
-      loadWatchlistState().then((state) => setWatchlistEntries(state.items)).catch(() => {});
-    }
+    loadWatchlistState().then((state) => setWatchlistEntries(state.items)).catch(() => {});
     return () => window.removeEventListener('lrr:watchlist-changed', refreshWatchlist);
   }, []);
 

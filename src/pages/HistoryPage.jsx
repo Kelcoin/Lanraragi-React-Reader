@@ -3,7 +3,7 @@ import ArchiveCard from '../components/ArchiveCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ArchiveSearchBox from '../components/ArchiveSearchBox';
 import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
-import { getCropCover, getHideRead, getHistory, hasRemoteHistory, loadHistoryState, removeHistoryItems, setHideRead } from '../lib/history';
+import { getCropCover, getHideRead, getHistory, loadHistoryState, removeHistoryItems, setHideRead } from '../lib/history';
 import { runHistoryExistenceCheck } from '../lib/historyMaintenance';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
 import { archiveMatchesSearch } from '../lib/archiveSearch';
@@ -81,12 +81,10 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
   const [query, setQuery] = useState('');
 
   useEffect(() => {
-    if (hasRemoteHistory()) {
-      loadHistoryState().then((state) => {
-        setHistoryState(state.histories);
-        setHideReadState(state.hideRead);
-      }).catch(() => setHistoryState(getHistory()));
-    }
+    loadHistoryState().then((state) => {
+      setHistoryState(state.histories);
+      setHideReadState(state.hideRead);
+    }).catch(() => setHistoryState(getHistory()));
   }, []);
 
   useEffect(() => {

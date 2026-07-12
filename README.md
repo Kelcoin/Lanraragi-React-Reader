@@ -21,7 +21,7 @@ LRR Modern Reader 是一个面向 [LANraragi](https://github.com/Difegue/LANrara
 - 下载插件匹配：URL 下载默认读取 LANraragi 下载插件声明的匹配正则，按插件顺序选择首个匹配项，也可手动指定插件。
 - 上传任务队列：文件和 URL 按顺序独立执行，单项失败不会中断整批，并以进度条和状态点显示每项处理状态。
 - 元数据编辑：编辑标题、摘要和标签，支持标签翻译、命名空间显示、原始标签悬浮切换、快捷删除、标签建议和元数据插件。
-- 阅读历史：本地记录最近阅读和进度，可选通过 Cloudflare Worker 同步。
+- 阅读历史：本地记录最近阅读和进度，可选通过 Cloudflare Worker 同步；展示元数据按 arcid 从 LANraragi 实时获取。
 - 待看归档：可从右键菜单加入待看，首页组件和待看页支持刷新校验、搜索、批量选择和删除。
 - 历史页与待看页：集中查看、标签搜索、通用筛选方案、批量选择和删除对应记录。
 - EH 评论区：可读取、排序、筛选、回复、编辑、投票 EH/EX 评论。
@@ -152,9 +152,11 @@ npm run build
 项目根目录的 `worker.js` 可部署为 Cloudflare Worker，用于：
 
 - 代理 EH/EX 评论、评论提交、投票和收藏夹删除请求。
-- 通过 KV 存储同步阅读历史、待看归档、隐藏已读等状态。
+- 通过 KV 存储同步阅读进度、待看归档 ID、隐藏已读等最小状态；标题与标签不写入 Worker。
 - 保存重复归档检测中被标记为“非重复”的归档组合。
 - 在 Worker 状态网页中导入/导出 KV 数据。
+
+Worker 状态页底部会显示项目名、版本号和 GitHub 链接。可选配置 Worker 文本变量 `APP_VERSION` 覆盖内置版本号，建议使用与前端一致的 `v<SemVer>+<7位Git Hash>` 格式。
 
 部署后，在登录页或首页设置面板填写 Worker 地址，例如 `https://your-worker.example.workers.dev`。
 
@@ -299,9 +301,11 @@ Worker KV 会保存：
 - `dedupe:non-duplicates`：重复归档检测中标记为非重复的全局组合；读取、写入、导入和导出都必须携带合法 Token。
 - `stats:requests`：Worker 请求计数。
 
+同步数据使用 schema v2：历史项只保存 `id`、`page`、`time`，待看项只保存 `id`、`addedAt`。Worker 在读取或写入旧数据时会自动移除标题、标签、页数等冗余元数据并回写新格式；前端根据 arcid 从 LANraragi 获取展示元数据，确认归档不存在时自动清理对应记录。
+
 Worker 的 `history_retention_days` 控制历史记录保留时间。Worker 会按记录时间清理超过该天数的历史，不再使用固定条数作为历史上限；同步请求失败时前端保留本地状态并显示离线提示。
 
-前端同步较大的历史或待看数据时可能使用 gzip 请求体；Worker 的 CORS 预检已允许 `Content-Encoding` 请求头。
+历史与待看同步统一发送普通 JSON。Worker 仍兼容旧版前端发送的 gzip JSON 请求体。
 
 ## 许可
 

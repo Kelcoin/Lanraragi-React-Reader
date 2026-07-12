@@ -1,0 +1,76 @@
+import { lrrApi } from './api';
+
+const metadataCache = new Map();
+const metadataRequests = new Map();
+const HYDRATE_CONCURRENCY = 6;
+
+function archiveId(value) {
+  return String(value?.id || value?.arcid || '').trim();
+}
+
+function isMissingArchiveError(error) {
+  return error?.status === 400 || error?.status === 404;
+}
+
+export function rememberArchiveMetadata(archive) {
+  const id = archiveId(archive);
+  if (!id) return null;
+  const metadata = { ...archive, id, arcid: id };
+  metadataCache.set(id, metadata);
+  return metadata;
+}
+
+export function decorateArchiveRecord(record) {
+  const id = archiveId(record);
+  if (!id) return null;
+  const metadata = metadataCache.get(id);
+  if (!metadata) return { ...record, id, arcid: id, title: id, tags: '' };
+  return {
+    ...metadata,
+    ...record,
+    id,
+    arcid: id,
+    title: metadata.title || id,
+    tags: metadata.tags || '',
+    total: Number(metadata.pagecount) || 0,
+  };
+}
+
+async function fetchArchiveMetadata(id) {
+  if (metadataCache.has(id)) return metadataCache.get(id);
+  if (metadataRequests.has(id)) return metadataRequests.get(id);
+  const request = lrrApi.getArchive(id)
+    .then((metadata) => rememberArchiveMetadata({ ...metadata, id, arcid: id }))
+    .finally(() => metadataRequests.delete(id));
+  metadataRequests.set(id, request);
+  return request;
+}
+
+export async function hydrateArchiveRecords(records) {
+  const source = (Array.isArray(records) ? records : []).filter((item) => archiveId(item));
+  const missingIds = [];
+  const hydrated = new Map();
+
+  for (let index = 0; index < source.length; index += HYDRATE_CONCURRENCY) {
+    const batch = source.slice(index, index + HYDRATE_CONCURRENCY);
+    await Promise.all(batch.map(async (record) => {
+      const id = archiveId(record);
+      if (metadataCache.has(id)) {
+        hydrated.set(id, decorateArchiveRecord(record));
+        return;
+      }
+      try {
+        await fetchArchiveMetadata(id);
+        hydrated.set(id, decorateArchiveRecord(record));
+      } catch (error) {
+        if (isMissingArchiveError(error)) missingIds.push(id);
+        else hydrated.set(id, decorateArchiveRecord(record));
+      }
+    }));
+  }
+
+  return {
+    items: source.map((record) => hydrated.get(archiveId(record))).filter(Boolean),
+    missingIds: Array.from(new Set(missingIds)),
+  };
+}
