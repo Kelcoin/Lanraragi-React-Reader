@@ -8,6 +8,7 @@ import { isArchiveMissingError } from '../lib/historyMaintenance';
 import { translateTag, categorizeTags } from '../lib/tags';
 import { getCachedImage, getImage, clearImageCache, primeImage } from '../lib/imageCache';
 import { DEFAULT_READER_SETTINGS, READER_SETTINGS_KEY, normalizeReaderSettings, prepareReaderSettingsForArchiveChange } from '../lib/readerSettings';
+import { getReaderSkeletonToolbarGroups } from '../lib/readerSkeletonLayout';
 import { computeContainedImageRect, rectsOverlap } from '../lib/pageIndicatorLayout';
 import { classifyWebtoonSeams, compareSeamPixels, sampleImageSeam } from '../lib/webtoonDetector';
 import { detectImageBorderInsets } from '../lib/readerImageTransform';
@@ -689,6 +690,7 @@ function getPageNavButtonStyle(isMobile) {
 
 function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, isMobile = false }) {
   const topBtnStyle = getTopBarButtonStyle(isMobile);
+  const toolbarGroups = getReaderSkeletonToolbarGroups(isMobile);
   const pageNavBtnStyle = getPageNavButtonStyle(isMobile);
   const frameStyle = getNormalReaderFrameStyle(isMobile);
   return (
@@ -696,7 +698,7 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
       <div style={skeletonViewportStyle}>
         <div
           style={{
-            padding: isMobile ? '14px 14px' : '14px 24px',
+            padding: '14px 24px',
             background: 'rgba(15, 18, 25, 0.9)',
             backdropFilter: 'blur(16px)',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
@@ -706,16 +708,27 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '16px', flex: '1 0 0', minWidth: 0 }}>
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.08)' }} />
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
+            {toolbarGroups.left.map((label, index) => (
+              <div
+                key={index}
+                style={{
+                  ...topBtnStyle,
+                  ...(isMobile ? { width: '40px', height: '40px', padding: 0 } : {}),
+                  color: 'transparent',
+                  background: index === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.06)',
+                  borderColor: index === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.06)',
+                }}
+              >
+                {label}
+              </div>
+            ))}
           </div>
           {!isMobile && (
             <div
               style={{
-                width: 'min(50vw, 420px)',
-                maxWidth: '420px',
-                minWidth: '180px',
+                flex: '0 1 auto',
+                maxWidth: '50vw',
+                minWidth: 0,
                 height: '18px',
                 borderRadius: '8px',
                 background: title ? 'transparent' : 'rgba(255,255,255,0.06)',
@@ -733,11 +746,20 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
           )}
           {isMobile && <span style={{ flex: '0 0 0', minWidth: 0 }} />}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: isMobile ? '6px' : '8px', flex: '1 0 0', minWidth: 0 }}>
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
-            <div style={{ ...topBtnStyle, background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }} />
+            {toolbarGroups.right.map((label, index) => (
+              <div
+                key={index}
+                style={{
+                  ...topBtnStyle,
+                  ...(isMobile ? { width: '40px', height: '40px', padding: 0 } : {}),
+                  color: 'transparent',
+                  background: 'rgba(255,255,255,0.06)',
+                  borderColor: 'rgba(255,255,255,0.06)',
+                }}
+              >
+                {label}
+              </div>
+            ))}
           </div>
         </div>
 
