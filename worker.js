@@ -5,7 +5,7 @@ addEventListener('fetch', (event) => {
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-sync-token',
+  'Access-Control-Allow-Headers': 'Content-Type, Content-Encoding, x-sync-token',
   'Access-Control-Max-Age': '86400',
 };
 

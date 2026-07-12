@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ARCHIVE_PAGE_SIZE, clampArchivePage, getArchivePageCount, getArchivePageStart, normalizeArchiveBrowseMode } from './archivePagination.js';
+import {
+  ARCHIVE_PAGE_SIZE,
+  clampArchivePage,
+  getArchivePageCount,
+  getArchivePageStart,
+  getSmartArchivePageSize,
+  normalizeArchiveBrowseMode,
+} from './archivePagination.js';
 
 test('normalizes archive browse mode', () => {
   assert.equal(normalizeArchiveBrowseMode('paged'), 'paged');
@@ -19,4 +26,10 @@ test('clamps archive page to available range', () => {
   assert.equal(clampArchivePage(-1, 120), 0);
   assert.equal(clampArchivePage(8, 120), 2);
   assert.equal(clampArchivePage(1, null), 1);
+});
+
+test('smart archive page size uses full rows without skipping offsets', () => {
+  assert.equal(getSmartArchivePageSize({ columns: 6, rows: 9, preferred: 50 }), 54);
+  assert.equal(getArchivePageStart(1, 57), 57);
+  assert.equal(getArchivePageStart(2, 57), 114);
 });

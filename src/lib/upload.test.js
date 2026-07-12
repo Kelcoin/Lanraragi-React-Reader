@@ -45,12 +45,14 @@ test('deduplicates files by name, size and lastModified', () => {
 
 test('sequential tasks continue after an item fails', async () => {
   const seen = [];
+  const updates = [];
   const results = await runUploadTasks(['a', 'b'], async (item) => {
     seen.push(item);
     if (item === 'a') throw new Error('failed');
     return 'ok';
-  });
+  }, update => updates.push(update));
 
   assert.deepEqual(seen, ['a', 'b']);
   assert.deepEqual(results.map(item => item.status), ['failed', 'success']);
+  assert.deepEqual(updates.map(update => update.progress), [0, 50, 50, 100]);
 });

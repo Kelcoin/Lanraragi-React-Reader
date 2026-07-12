@@ -23,3 +23,11 @@ export function clampArchivePage(page, total, pageSize = ARCHIVE_PAGE_SIZE) {
 export function getArchivePageStart(page, pageSize = ARCHIVE_PAGE_SIZE) {
   return Math.max(0, Math.floor(Number(page) || 0)) * pageSize;
 }
+
+export function getSmartArchivePageSize({ columns = 1, rows = 0, preferred = ARCHIVE_PAGE_SIZE } = {}) {
+  const safeColumns = Math.max(1, Math.floor(Number(columns) || 1));
+  const safePreferred = Math.max(safeColumns, Math.floor(Number(preferred) || ARCHIVE_PAGE_SIZE));
+  const byRows = Math.floor(Number(rows) || 0) * safeColumns;
+  if (byRows > 0) return byRows;
+  return Math.max(safeColumns, Math.ceil(safePreferred / safeColumns) * safeColumns);
+}

@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
 import ConfirmDialog from '../components/ConfirmDialog';
-import TagSuggest from '../components/TagSuggest';
+import ArchiveSearchBox from '../components/ArchiveSearchBox';
 import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
 import { getCropCover, getHideRead, getHistory, hasRemoteHistory, loadHistoryState, removeHistoryItems, setHideRead } from '../lib/history';
 import { runHistoryExistenceCheck } from '../lib/historyMaintenance';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
-import { archiveMatchesSearch, replaceCurrentArchiveSearchToken } from '../lib/archiveSearch';
+import { archiveMatchesSearch } from '../lib/archiveSearch';
 
 function HeaderGlyph() {
   return <HomeSectionGlyph name="continue" size={24} color={getSectionGlyphColor('continue')} />;
@@ -79,8 +79,6 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
   const [checking, setChecking] = useState(false);
   const [isNarrow, setIsNarrow] = useState(window.innerWidth < 600);
   const [query, setQuery] = useState('');
-  const suggestActiveRef = useRef(false);
-  const searchBoxRef = useRef(null);
 
   useEffect(() => {
     if (hasRemoteHistory()) {
@@ -164,12 +162,6 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
     }
   }, [checking]);
 
-  const handleTagSelect = useCallback((tag) => {
-    suggestActiveRef.current = false;
-    setQuery((value) => replaceCurrentArchiveSearchToken(value, tag));
-    setTimeout(() => searchBoxRef.current?.querySelector('input')?.focus(), 50);
-  }, []);
-
   const toggleSelection = useCallback((id, event) => {
     if (!id) return;
     setSelectedIds((prev) => {
@@ -227,7 +219,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
 
   return (
     <>
-      <div style={{ padding: isNarrow ? '16px 10px' : '24px 16px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ padding: isNarrow ? '16px 10px' : '24px 20px', maxWidth: '1680px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -318,30 +310,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
             </div>
           </div>
 
-          <div ref={searchBoxRef} style={{ position: 'relative', maxWidth: '680px', marginBottom: '18px' }}>
-            <input
-              className="input-glass"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !suggestActiveRef.current) event.currentTarget.blur();
-              }}
-              placeholder="在阅读历史中搜索标题或标签"
-              style={{ padding: '10px 38px 10px 12px', fontSize: '14px' }}
-            />
-            {query && (
-              <button
-                type="button"
-                className="input-clear-btn"
-                onClick={() => setQuery('')}
-                style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)' }}
-                aria-label="清空搜索"
-              >
-                ×
-              </button>
-            )}
-            <TagSuggest inputValue={query} onSelectTag={handleTagSelect} containerRef={searchBoxRef} onSetActive={(active) => { suggestActiveRef.current = active; }} />
-          </div>
+          <ArchiveSearchBox query={query} setQuery={setQuery} placeholder="在阅读历史中搜索标题或标签" />
 
           {searchedHistory.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: isNarrow ? '22px' : '28px' }}>

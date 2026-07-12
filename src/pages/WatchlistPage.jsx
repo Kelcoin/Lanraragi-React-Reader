@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
 import { navigateToMetadata } from '../lib/navigation';
 import ConfirmDialog from '../components/ConfirmDialog';
-import TagSuggest from '../components/TagSuggest';
+import ArchiveSearchBox from '../components/ArchiveSearchBox';
 import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
 import { getCropCover } from '../lib/history';
 import { lrrApi } from '../lib/api';
-import { archiveMatchesSearch, replaceCurrentArchiveSearchToken } from '../lib/archiveSearch';
+import { archiveMatchesSearch } from '../lib/archiveSearch';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
 import { getWatchlist, hasRemoteWatchlist, loadWatchlistState, removeWatchlistItems } from '../lib/watchlist';
 
@@ -26,8 +26,6 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
   const [syncing, setSyncing] = useState(false);
   const [menu, setMenu] = useState(null);
   const [isNarrow, setIsNarrow] = useState(window.innerWidth < 600);
-  const suggestActiveRef = useRef(false);
-  const searchBoxRef = useRef(null);
 
   useEffect(() => {
     if (hasRemoteWatchlist()) {
@@ -163,15 +161,9 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
     }
   }, []);
 
-  const handleTagSelect = useCallback((tag) => {
-    suggestActiveRef.current = false;
-    setQuery((value) => replaceCurrentArchiveSearchToken(value, tag));
-    setTimeout(() => searchBoxRef.current?.querySelector('input')?.focus(), 50);
-  }, []);
-
   return (
     <>
-      <div style={{ padding: isNarrow ? '16px 10px' : '24px 16px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ padding: isNarrow ? '16px 10px' : '24px 20px', maxWidth: '1680px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -231,30 +223,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
                 )}
               </div>
             </div>
-            <div ref={searchBoxRef} style={{ position: 'relative', maxWidth: '680px' }}>
-              <input
-                className="input-glass"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !suggestActiveRef.current) event.currentTarget.blur();
-                }}
-                placeholder="在待看归档中搜索标题或标签"
-                style={{ padding: '10px 38px 10px 12px', fontSize: '14px' }}
-              />
-              {query && (
-                <button
-                  type="button"
-                  className="input-clear-btn"
-                  onClick={() => setQuery('')}
-                  style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)' }}
-                  aria-label="清空搜索"
-                >
-                  ×
-                </button>
-              )}
-              <TagSuggest inputValue={query} onSelectTag={handleTagSelect} containerRef={searchBoxRef} onSetActive={(active) => { suggestActiveRef.current = active; }} />
-            </div>
+            <ArchiveSearchBox query={query} setQuery={setQuery} placeholder="在待看归档中搜索标题或标签" />
           </div>
 
           {filteredItems.length > 0 ? (
@@ -265,7 +234,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
                   <ArchiveCard
                     key={`watchlist-${item.id}`}
                     archive={item}
-                    className="watchlist-card"
+                    className="watchlist-card watchlist-card-plain"
                     wrapStyle={{ position: 'relative' }}
                     overlay={selectionMode ? (
                       <button

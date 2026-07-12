@@ -70,18 +70,19 @@ export function dedupeUploadFiles(files = []) {
 
 export async function runUploadTasks(items, worker, onUpdate = () => {}) {
   const results = [];
+  const total = Math.max(1, items.length);
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
-    onUpdate({ index, item, status: 'running' });
+    onUpdate({ index, item, status: 'running', progress: Math.round((index / total) * 100) });
     try {
       const value = await worker(item, index);
       const result = { item, status: 'success', value };
       results.push(result);
-      onUpdate({ index, ...result });
+      onUpdate({ index, ...result, progress: Math.round((results.length / total) * 100) });
     } catch (error) {
       const result = { item, status: 'failed', error: error?.message || String(error) };
       results.push(result);
-      onUpdate({ index, ...result });
+      onUpdate({ index, ...result, progress: Math.round((results.length / total) * 100) });
     }
   }
   return results;

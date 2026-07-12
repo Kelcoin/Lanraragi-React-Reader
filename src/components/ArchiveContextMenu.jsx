@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 function clampMenuPosition(x, y, height = 178) {
-  const width = 178;
+  const width = 150;
   const gap = 8;
   return {
     left: Math.min(Math.max(gap, x), Math.max(gap, window.innerWidth - width - gap)),
@@ -78,7 +78,7 @@ export default function ArchiveContextMenu({ menu, onClose, onRead, onEditMetada
         left: `${pos.left}px`,
         top: `${pos.top}px`,
         zIndex: 100000,
-        width: '178px',
+        width: '150px',
         padding: '6px',
         borderRadius: '8px',
         border: '1px solid rgba(255,255,255,0.12)',

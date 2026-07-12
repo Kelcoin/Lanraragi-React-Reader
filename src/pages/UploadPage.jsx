@@ -47,6 +47,7 @@ export default function UploadPage() {
       : 0
   ), [parsedUrls.valid, pluginState.plugins, pluginValue]);
   const completedCount = results.filter(item => item.status === 'success' || item.status === 'failed').length;
+  const totalProgress = results.length ? Math.max(0, Math.min(100, Math.round(results.reduce((sum, item) => sum + (Number(item.progress) || 0), 0) / results.length))) : 0;
 
   useEffect(() => {
     let disposed = false;
@@ -78,6 +79,7 @@ export default function UploadPage() {
       return {
         ...item,
         status: update.status,
+        progress: update.progress ?? item.progress ?? 0,
         message: update.error || (update.status === 'success' ? responseMessage(update.value) : item.message),
       };
     }));
@@ -86,7 +88,7 @@ export default function UploadPage() {
   const runFiles = async () => {
     if (running || files.length === 0) return;
     const tasks = files.map((file, index) => ({ id: taskKey('file', file.name, index), label: file.name, file }));
-    setResults(tasks.map(task => ({ ...task, type: 'file', status: 'queued', message: '' })));
+    setResults(tasks.map(task => ({ ...task, type: 'file', status: 'queued', progress: 0, message: '' })));
     setRunning(true);
     await runUploadTasks(tasks, task => lrrApi.uploadArchive(task.file), updateTask);
     await lrrApi.clearSearchCache().catch(() => {});
@@ -99,7 +101,7 @@ export default function UploadPage() {
       id: taskKey('invalid', url, index), type: 'url', label: url, status: 'failed', message: '只支持有效的 HTTP 或 HTTPS URL',
     }));
     const tasks = parsedUrls.valid.map((url, index) => ({ id: taskKey('url', url, index), label: url, url }));
-    setResults([...tasks.map(task => ({ ...task, type: 'url', status: 'queued', message: '' })), ...invalidResults]);
+    setResults([...tasks.map(task => ({ ...task, type: 'url', status: 'queued', progress: 0, message: '' })), ...invalidResults.map(item => ({ ...item, progress: 100 }))]);
     setRunning(true);
     await runUploadTasks(tasks, async (task) => {
       const plugin = pluginValue === 'auto'
@@ -194,9 +196,9 @@ export default function UploadPage() {
           <div><h2>任务状态</h2><p>{completedCount} / {results.length} 已完成</p></div>
           {!running && <button type="button" className="btn" onClick={() => setResults([])}>清空结果</button>}
         </div>
-        <div className="upload-progress"><span style={{ width: `${results.length ? (completedCount / results.length) * 100 : 0}%` }} /></div>
+        <div className="upload-progress"><span style={{ width: `${totalProgress}%` }} /></div>
         <div className="upload-task-list">
-          {results.map(item => <div key={item.id} className="upload-task-row">
+          {results.map(item => <div key={item.id} className="upload-task-row" style={{ '--task-progress': `${Number(item.progress) || 0}%` }}>
             <span className={`upload-status-dot is-${item.status}`} />
             <div><strong title={item.label}>{item.label}</strong>{item.message && <small>{item.message}</small>}</div>
             <span className={`upload-status-text is-${item.status}`}>{statusLabel(item.status)}</span>

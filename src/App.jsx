@@ -171,7 +171,7 @@ export default function App() {
 
                 <div>
                   <label className="field-label">访问 Token</label>
-                  <input type="password" className="input-glass" placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
+                  <input type="text" className="input-glass secret-input" placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
                 </div>
               </div>
             </div>
