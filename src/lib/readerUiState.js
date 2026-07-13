@@ -16,6 +16,22 @@ export function isReaderMobileViewport(width, hasTouch) {
   return width < 768 || hasTouch;
 }
 
+export function shouldUseCompactReaderToolbar({
+  isMobile,
+  availableWidth,
+  requiredWidth,
+  tolerance = 8,
+}) {
+  if (isMobile) return true;
+  if (!Number.isFinite(availableWidth) || !Number.isFinite(requiredWidth)) return false;
+  return availableWidth < requiredWidth + tolerance;
+}
+
+export function isIosWebKitPlatform(userAgent = '', platform = '', maxTouchPoints = 0) {
+  if (/iPad|iPhone|iPod/i.test(userAgent) || /iPad|iPhone|iPod/i.test(platform)) return true;
+  return platform === 'MacIntel' && Number(maxTouchPoints) > 1;
+}
+
 export function getReaderArchivePanelModel(type, sources) {
   if (type === 'watchlist') {
     return {

@@ -569,8 +569,8 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
   const jumpUrl = normaliseEhUrl(sourceUrl);
 
   return (
-    <div ref={sectionRef} data-lrr-eh-comments className="glass-panel section-reveal section-reveal-delay-3" style={{ padding: '20px', marginTop: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
+    <div ref={sectionRef} data-lrr-eh-comments className="eh-comments glass-panel section-reveal section-reveal-delay-3" style={{ padding: '20px', marginTop: '20px' }}>
+      <div className="eh-comments-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px' }}>
         <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ color: 'var(--accent)' }}>💬</span> EH 评论区
           {loaded && <span style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 400 }}>{comments.length} 条</span>}
@@ -579,7 +579,7 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
           <a
             href={jumpUrl} target="_blank" rel="noopener noreferrer"
             className="btn"
-            style={{ padding: '5px 12px', fontSize: '12px', textDecoration: 'none', background: 'rgba(255,255,255,0.06)' }}
+            style={{ padding: '5px 12px', fontSize: '12px', textDecoration: 'none', background: 'var(--reader-control-bg)' }}
           >
             跳转画廊
           </a>
@@ -602,7 +602,7 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
       )}
 
       {error && (
-        <div style={{ padding: '14px 18px', background: 'rgba(242,116,116,0.1)', border: '1px solid rgba(242,116,116,0.3)', borderRadius: '8px', color: '#f27474', fontSize: '13px', lineHeight: 1.6, marginBottom: '16px', whiteSpace: 'pre-wrap' }}>
+        <div className="eh-comment-error" style={{ padding: '14px 18px', borderRadius: '8px', fontSize: '13px', lineHeight: 1.6, marginBottom: '16px', whiteSpace: 'pre-wrap' }}>
           <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>⚠️ {error}</div>
           {needsCookie && (
             <div style={{ marginTop: '8px', color: 'var(--text-sub)', fontSize: '12px' }}>
@@ -636,16 +636,14 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
             {(() => {
               const hasUserCommented = comments.some(c => c.isEditable);
               return filteredAndSorted.map(c => {
-                const scoreClass = c.score > 0 ? '#a5dc86' : c.score < 0 ? '#f27474' : 'var(--text-sub)';
+                const scoreClass = c.score > 0 ? 'var(--comment-positive)' : c.score < 0 ? 'var(--comment-negative)' : 'var(--text-sub)';
                 const scoreSign = c.score > 0 ? '+' : '';
                 const canVote = !c.isUploader && ehWorker && cookie && apiData.apikey && apiData.apiuid && apiData.gid && apiData.token;
 
                 return (
-                <div key={c.id} style={{
-                  background: c.isUploader ? 'rgba(255,152,0,0.08)' : 'rgba(0,0,0,0.2)',
+                <div key={c.id} className={`eh-comment-card${c.isUploader ? ' is-uploader' : ''}`} style={{
                   padding: '14px 16px', borderRadius: '10px', marginBottom: '10px',
-                  border: c.isUploader ? '1px solid rgba(255,152,0,0.3)' : '1px solid rgba(255,255,255,0.06)',
-                  borderLeft: c.isUploader ? '4px solid #ff9800' : '4px solid rgba(255,255,255,0.1)'
+                  borderLeftColor: c.isUploader ? '#d77f12' : 'var(--comment-card-border)'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px', fontSize: '12px', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: '1 1 auto' }}>
@@ -668,32 +666,32 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
                           {votingId === c.id ? (
                             <span style={{
                               display: 'inline-block', width: '12px', height: '12px',
-                              border: '2px solid rgba(255,255,255,0.15)', borderTopColor: 'var(--accent)',
+                              border: '2px solid var(--comment-card-border)', borderTopColor: 'var(--accent)',
                               borderRadius: '50%', animation: 'spin 0.6s linear infinite',
                             }} />
                           ) : (
                             <>
-                              <button onClick={() => doVote(c.id, 1)} style={{
-                                background: 'none', border: 'none', color: c.myVote === 1 ? '#a5dc86' : '#666',
+                              <button className="eh-vote-button" onClick={() => doVote(c.id, 1)} style={{
+                                background: 'none', border: 'none', color: c.myVote === 1 ? 'var(--comment-positive)' : 'var(--text-muted)',
                                 cursor: 'pointer', width: '20px', height: '20px', padding: 0,
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.2s ease', borderRadius: '3px', flexShrink: 0,
+                                borderRadius: '3px', flexShrink: 0,
                                 lineHeight: 0, verticalAlign: 'middle',
                               }}
-                              onMouseEnter={e => { if (c.myVote !== 1) e.currentTarget.style.color = '#a5dc86'; }}
-                              onMouseLeave={e => { if (c.myVote !== 1) e.currentTarget.style.color = '#666'; }}
+                              onMouseEnter={e => { if (c.myVote !== 1) e.currentTarget.style.color = 'var(--comment-positive)'; }}
+                              onMouseLeave={e => { if (c.myVote !== 1) e.currentTarget.style.color = 'var(--text-muted)'; }}
                               title="赞同"
                               aria-label="赞同"
                               ><VoteIcon direction="up" active={c.myVote === 1} /></button>
-                              <button onClick={() => doVote(c.id, -1)} style={{
-                                background: 'none', border: 'none', color: c.myVote === -1 ? '#f27474' : '#666',
+                              <button className="eh-vote-button" onClick={() => doVote(c.id, -1)} style={{
+                                background: 'none', border: 'none', color: c.myVote === -1 ? 'var(--comment-negative)' : 'var(--text-muted)',
                                 cursor: 'pointer', width: '20px', height: '20px', padding: 0,
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.2s ease', borderRadius: '3px', flexShrink: 0,
+                                borderRadius: '3px', flexShrink: 0,
                                 lineHeight: 0, verticalAlign: 'middle',
                               }}
-                              onMouseEnter={e => { if (c.myVote !== -1) e.currentTarget.style.color = '#f27474'; }}
-                              onMouseLeave={e => { if (c.myVote !== -1) e.currentTarget.style.color = '#666'; }}
+                              onMouseEnter={e => { if (c.myVote !== -1) e.currentTarget.style.color = 'var(--comment-negative)'; }}
+                              onMouseLeave={e => { if (c.myVote !== -1) e.currentTarget.style.color = 'var(--text-muted)'; }}
                               title="反对"
                               aria-label="反对"
                               ><VoteIcon direction="down" active={c.myVote === -1} /></button>
@@ -703,7 +701,7 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
                       )}
                       {c.isEditable && ehWorker && cookie && (
                         <button onClick={() => { setEditingId(c.id); setEditText(''); }} style={{
-                          background: 'none', border: 'none', color: '#999', cursor: 'pointer',
+                          background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
                           fontSize: '11px', textDecoration: 'underline',
                         }}>编辑</button>
                       )}
@@ -711,11 +709,10 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
                   </div>
                   {editingId === c.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
+                      <textarea className="eh-comment-input" value={editText} onChange={(e) => setEditText(e.target.value)}
                         placeholder={c.content.replace(/<[^>]*>/g, '').substring(0, 100)}
                         style={{
-                          width: '100%', minHeight: '70px', background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#ccc',
+                          width: '100%', minHeight: '70px', borderRadius: '8px',
                           padding: '10px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box',
                           fontFamily: 'inherit',
                         }}
@@ -740,12 +737,11 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
               );})})()}
 
             {!comments.some(c => c.isEditable) && ehWorker && cookie && (
-              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                <textarea value={postText} onChange={(e) => setPostText(e.target.value)}
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--comment-card-border)' }}>
+                <textarea className="eh-comment-input" value={postText} onChange={(e) => setPostText(e.target.value)}
                   placeholder="发表新评论..."
                   style={{
-                    width: '100%', minHeight: '80px', background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#ccc',
+                    width: '100%', minHeight: '80px', borderRadius: '10px',
                     padding: '12px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box',
                     fontFamily: 'inherit',
                   }}

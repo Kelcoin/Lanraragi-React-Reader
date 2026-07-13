@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { getReaderArchivePanelModel, getReaderToolbarGroups, isReaderMobileViewport } from './readerUiState.js';
+import {
+  getReaderArchivePanelModel,
+  getReaderToolbarGroups,
+  isIosWebKitPlatform,
+  isReaderMobileViewport,
+  shouldUseCompactReaderToolbar,
+} from './readerUiState.js';
 
 test('reader toolbar has stable merged control groups', () => {
   assert.deepEqual(getReaderToolbarGroups(false), {
@@ -18,6 +24,19 @@ test('reader detects mobile layout on first render', () => {
   assert.equal(isReaderMobileViewport(390, false), true);
   assert.equal(isReaderMobileViewport(1440, true), true);
   assert.equal(isReaderMobileViewport(1440, false), false);
+});
+
+test('reader toolbar becomes compact before controls overflow', () => {
+  assert.equal(shouldUseCompactReaderToolbar({ isMobile: true, availableWidth: 1400, requiredWidth: 900 }), true);
+  assert.equal(shouldUseCompactReaderToolbar({ isMobile: false, availableWidth: 899, requiredWidth: 900 }), true);
+  assert.equal(shouldUseCompactReaderToolbar({ isMobile: false, availableWidth: 920, requiredWidth: 900 }), false);
+});
+
+test('reader detects iOS and desktop-mode iPadOS', () => {
+  assert.equal(isIosWebKitPlatform('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 'iPhone', 5), true);
+  assert.equal(isIosWebKitPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 5), true);
+  assert.equal(isIosWebKitPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 0), false);
+  assert.equal(isIosWebKitPlatform('Mozilla/5.0 (Linux; Android 15)', 'Linux armv8l', 5), false);
 });
 
 test('archive panel model selects matching behavior', () => {

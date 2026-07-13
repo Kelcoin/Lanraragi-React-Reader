@@ -9,7 +9,12 @@ import { translateTag, categorizeTags } from '../lib/tags';
 import { getCachedImage, getImage, clearImageCache, primeImage } from '../lib/imageCache';
 import { DEFAULT_READER_SETTINGS, READER_SETTINGS_KEY, normalizeReaderSettings, prepareReaderSettingsForArchiveChange } from '../lib/readerSettings';
 import { getReaderSkeletonToolbarGroups } from '../lib/readerSkeletonLayout';
-import { getReaderArchivePanelModel, isReaderMobileViewport } from '../lib/readerUiState';
+import {
+  getReaderArchivePanelModel,
+  isIosWebKitPlatform,
+  isReaderMobileViewport,
+  shouldUseCompactReaderToolbar,
+} from '../lib/readerUiState';
 import { computeContainedImageRect, rectsOverlap } from '../lib/pageIndicatorLayout';
 import { classifyWebtoonSeams, compareSeamPixels, sampleImageSeam } from '../lib/webtoonDetector';
 import { detectImageBorderInsets } from '../lib/readerImageTransform';
@@ -240,7 +245,7 @@ const DrawerThumb = ({ archiveId, pageIndex, active, cacheOnly = false, eager = 
         style={{
           width: '100%',
           height: '100%',
-          background: thumbState === 'error' ? 'rgba(110,24,24,0.32)' : 'rgba(255,255,255,0.03)',
+          background: thumbState === 'error' ? 'color-mix(in srgb, var(--danger) 22%, transparent)' : 'var(--reader-skeleton-base)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -312,7 +317,6 @@ const PageImage = React.forwardRef(({
   useEffect(() => {
     let isMounted = true;
     const requestSeq = ++requestSeqRef.current;
-    setImgSrc(null);
     setLoadState(pageUrl ? 'loading' : 'idle');
 
     (async () => {
@@ -335,7 +339,6 @@ const PageImage = React.forwardRef(({
           setAllowNetworkFallback(true);
           return;
         }
-        setImgSrc(null);
         setLoadState('error');
         onError?.(pageIndex);
       } catch {
@@ -344,7 +347,6 @@ const PageImage = React.forwardRef(({
           setAllowNetworkFallback(true);
           return;
         }
-        setImgSrc(null);
         setLoadState('error');
         onError?.(pageIndex);
       }
@@ -356,14 +358,14 @@ const PageImage = React.forwardRef(({
   if (!imgSrc) {
     return (
       <div
-        className="reader-shell-pulse reader-skeleton-fade"
+        className="reader-shell-pulse reader-skeleton-fade reader-skeleton-surface"
         style={{
           width: '100%',
           height: '100%',
           minHeight: 0,
           borderRadius: '8px',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
-          border: '1px solid rgba(255,255,255,0.05)',
+          background: 'var(--reader-skeleton-base)',
+          border: '1px solid var(--reader-control-border)',
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -381,7 +383,7 @@ const PageImage = React.forwardRef(({
             padding: '18px',
             textAlign: 'center',
             pointerEvents: 'none',
-            color: loadState === 'error' ? '#ffb4b4' : '#dfe7f5',
+            color: loadState === 'error' ? 'var(--danger)' : 'var(--text-main)',
           }}
         >
           <div style={{ fontSize: '14px', fontWeight: 700, letterSpacing: '0.3px' }}>
@@ -476,7 +478,7 @@ const ReaderArchiveThumb = ({ archiveId, cacheOnly = false }) => {
     return () => { m = false; };
   }, [allowNetworkFallback, archiveId, cacheOnly]);
   return (
-    <div style={{ width: '48px', height: '66px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.05)' }}>
+    <div style={{ width: '48px', height: '66px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0, background: 'var(--cover-bg)' }}>
       {src && <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
     </div>
   );
@@ -486,7 +488,7 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
   return (
     <div
       data-panel={type}
-      className="glass-panel dropdown-animate no-scrollbar"
+      className="reader-panel-surface glass-panel dropdown-animate no-scrollbar"
       style={{
         position: 'absolute',
         top: '62px',
@@ -499,10 +501,10 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
         maxHeight: '70vh',
         overflowY: 'auto',
         boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
-        border: '1px solid rgba(255,255,255,0.1)',
+        border: '1px solid var(--reader-control-border)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px', borderBottom: '1px solid var(--reader-control-border)', paddingBottom: '8px' }}>
         <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600 }}>{title}</span>
         <div className="reader-panel-tabs" role="group" aria-label="归档列表类型">
           {[
@@ -544,25 +546,24 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
               <div
                 key={id}
                 onClick={() => navigateToArchive(id)}
+                className="reader-archive-list-item"
                 style={{
                   display: 'flex', gap: '10px', alignItems: 'center',
                   padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--glass-border)',
                   transition: 'background-color 0.15s ease, border-color 0.15s ease',
                 }}
-                onMouseEnter={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                onMouseLeave={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
               >
                 <ReaderArchiveThumb archiveId={id} cacheOnly={cacheOnly} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '12px', color: '#e3e9f3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.title}
                   </div>
                   {displayTags.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
                       {displayTags.map((tag, index) => (
-                        <span key={index} style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', color: '#aaa', background: 'rgba(255,255,255,0.08)', whiteSpace: 'nowrap' }}>{tag}</span>
+                        <span key={index} style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-sub)', background: 'var(--surface-3)', whiteSpace: 'nowrap' }}>{tag}</span>
                       ))}
                     </div>
                   )}
@@ -582,7 +583,7 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
                     onDelete(item);
                   }}
                   style={{
-                    background: 'transparent', border: 'none', color: '#8f97a8', cursor: 'pointer',
+                    background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
                     fontSize: '16px', lineHeight: 1, padding: '2px 4px', borderRadius: '4px', flexShrink: 0,
                   }}
                   title={type === 'watchlist' ? '移出待看' : '删除历史'}
@@ -668,8 +669,8 @@ function getNormalReaderFrameStyle(isMobile) {
     width: '100%',
     marginLeft: 'auto',
     marginRight: 'auto',
-    background: 'linear-gradient(180deg, rgba(10,13,19,0.96), rgba(5,7,10,0.96))',
-    border: '1px solid rgba(174,191,214,0.12)',
+    background: 'var(--reader-stage-bg)',
+    border: '1px solid var(--reader-stage-border)',
     borderRadius: '16px',
     padding: isMobile ? '16px' : '24px',
     display: 'flex',
@@ -686,9 +687,9 @@ function getTopBarButtonStyle(isMobile, disabled = false) {
     padding: isMobile ? '8px 10px' : '8px 14px',
     minWidth: isMobile ? '40px' : 'unset',
     height: isMobile ? '40px' : 'auto',
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.035))',
-    border: '1px solid rgba(174,191,214,0.16)',
-    color: '#d9e4f2',
+    background: 'var(--reader-control-bg)',
+    border: '1px solid var(--reader-control-border)',
+    color: 'var(--reader-control-text)',
     borderRadius: '8px',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: isMobile ? '16px' : '13px',
@@ -707,9 +708,9 @@ function getPageNavButtonStyle(isMobile) {
   return {
     width: isMobile ? '52px' : '56px',
     height: isMobile ? '52px' : '56px',
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.1), rgba(255,255,255,0.045))',
-    border: '1px solid rgba(174,191,214,0.18)',
-    color: '#fff',
+    background: 'var(--reader-control-bg)',
+    border: '1px solid var(--reader-control-border)',
+    color: 'var(--reader-control-text)',
     borderRadius: isMobile ? '10px' : '12px',
     cursor: 'pointer',
     fontSize: isMobile ? '20px' : '22px',
@@ -721,54 +722,103 @@ function getPageNavButtonStyle(isMobile) {
   };
 }
 
+function useCompactReaderToolbar(isMobile) {
+  const toolbarRef = useRef(null);
+  const expandedWidthRef = useRef(0);
+  const [compact, setCompact] = useState(isMobile);
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return undefined;
+    const update = () => {
+      const availableWidth = toolbar.clientWidth;
+      if (!compact) {
+        const left = toolbar.querySelector('.reader-toolbar-group-left');
+        const right = toolbar.querySelector('.reader-toolbar-group-right');
+        const title = toolbar.querySelector('.reader-toolbar-title');
+        const horizontalPadding = 48;
+        const groupGaps = 32;
+        const titleWidth = title ? Math.min(title.scrollWidth, 240) : 0;
+        expandedWidthRef.current = (left?.scrollWidth || 0) + (right?.scrollWidth || 0) + titleWidth + horizontalPadding + groupGaps;
+      }
+      const requiredWidth = expandedWidthRef.current || availableWidth;
+      setCompact(shouldUseCompactReaderToolbar({ isMobile, availableWidth, requiredWidth }));
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, [compact, isMobile]);
+
+  return { toolbarRef, compact };
+}
+
+function ReaderToolbarButtonContent({ icon, label, size = 18 }) {
+  return (
+    <span className="reader-toolbar-button-content" aria-hidden="true">
+      <span className="reader-toolbar-icon"><ToolbarGlyph name={icon} size={size} /></span>
+      <span className="reader-toolbar-label">{label}</span>
+    </span>
+  );
+}
+
 function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, isMobile = false }) {
-  const topBtnStyle = getTopBarButtonStyle(isMobile);
-  const toolbarGroups = getReaderSkeletonToolbarGroups(isMobile);
+  const { toolbarRef, compact } = useCompactReaderToolbar(isMobile);
+  const topBtnStyle = getTopBarButtonStyle(compact);
+  const toolbarGroups = getReaderSkeletonToolbarGroups(compact);
   const pageNavBtnStyle = getPageNavButtonStyle(isMobile);
   const frameStyle = getNormalReaderFrameStyle(isMobile);
   return (
-    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff' }}>
+    <div className="reader-root" style={{ minHeight: '100vh', background: 'transparent' }}>
       <div style={skeletonViewportStyle}>
         <div
+          ref={toolbarRef}
+          className="reader-toolbar"
           data-reader-toolbar
           data-mobile={isMobile ? 'true' : 'false'}
+          data-compact={compact ? 'true' : 'false'}
           style={{
             padding: '14px 24px',
-            background: 'rgba(15, 18, 25, 0.9)',
+            background: 'var(--reader-toolbar-bg)',
             backdropFilter: 'blur(16px)',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid var(--reader-control-border)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '16px', flex: '1 0 0', minWidth: 0 }}>
+          <div className="reader-toolbar-group-left" style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '16px', flex: '1 0 0', minWidth: 0 }}>
             {toolbarGroups.left.map((label, index) => (
               <div
                 key={index}
                 className="reader-toolbar-button reader-toolbar-skeleton"
                 style={{
                   ...topBtnStyle,
-                  ...(isMobile ? { width: '40px', height: '40px', padding: 0 } : {}),
+                  ...(compact ? { width: '40px', height: '40px', padding: 0 } : {}),
                   color: 'transparent',
-                  background: index === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.06)',
-                  borderColor: index === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.06)',
+                  background: 'var(--reader-skeleton-base)',
+                  borderColor: 'var(--reader-control-border)',
                 }}
               >
                 {label}
               </div>
             ))}
           </div>
-          {!isMobile && (
+          {!compact && (
             <div
+              className="reader-toolbar-title"
               style={{
                 flex: '0 1 auto',
                 maxWidth: '50vw',
                 minWidth: 0,
                 height: '18px',
                 borderRadius: '8px',
-                background: title ? 'transparent' : 'rgba(255,255,255,0.06)',
-                color: title ? '#d7deea' : 'transparent',
+                background: title ? 'transparent' : 'var(--reader-skeleton-base)',
+                color: title ? 'var(--text-main)' : 'transparent',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -780,18 +830,18 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
               {title || 'loading'}
             </div>
           )}
-          {isMobile && <span style={{ flex: '0 0 0', minWidth: 0 }} />}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: isMobile ? '6px' : '8px', flex: '1 0 0', minWidth: 0 }}>
+          {compact && <span style={{ flex: '0 0 0', minWidth: 0 }} />}
+          <div className="reader-toolbar-group-right" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: isMobile ? '6px' : '8px', flex: '1 0 0', minWidth: 0 }}>
             {toolbarGroups.right.map((label, index) => (
               <div
                 key={index}
                 className="reader-toolbar-button reader-toolbar-skeleton"
                 style={{
                   ...topBtnStyle,
-                  ...(isMobile ? { width: '40px', height: '40px', padding: 0 } : {}),
+                  ...(compact ? { width: '40px', height: '40px', padding: 0 } : {}),
                   color: 'transparent',
-                  background: 'rgba(255,255,255,0.06)',
-                  borderColor: 'rgba(255,255,255,0.06)',
+                  background: 'var(--reader-skeleton-base)',
+                  borderColor: 'var(--reader-control-border)',
                 }}
               >
                 {label}
@@ -802,7 +852,7 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
 
         <div style={normalReaderStageLayoutStyle}>
           <div
-            className="reader-shell-pulse"
+            className="reader-shell-pulse reader-stage-frame"
             style={frameStyle}
           >
             <div
@@ -813,8 +863,8 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
                 maxHeight: '100%',
                 minWidth: 0,
                 borderRadius: '8px',
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
-                border: '1px solid rgba(255,255,255,0.04)',
+                background: 'var(--reader-skeleton-base)',
+                border: '1px solid var(--reader-control-border)',
                 position: 'relative',
                 overflow: 'hidden',
               }}
@@ -824,17 +874,17 @@ function ReaderStageSkeleton({ title = '', hasMeta = false, hasPages = false, is
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '18px' : '24px', padding: '20px 8px', flexShrink: 0 }}>
-            <div style={{ ...pageNavBtnStyle, background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.08)' }} />
-            <div style={{ width: hasPages ? '72px' : '96px', height: '18px', borderRadius: '8px', background: 'rgba(255,255,255,0.08)' }} />
-            <div style={{ ...pageNavBtnStyle, background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.08)' }} />
+            <div className="reader-skeleton-surface" style={pageNavBtnStyle} />
+            <div className="reader-skeleton-surface" style={{ width: hasPages ? '72px' : '96px', height: '18px', borderRadius: '8px' }} />
+            <div className="reader-skeleton-surface" style={pageNavBtnStyle} />
           </div>
         </div>
 
         {hasMeta && (
           <div style={{ maxWidth: '1300px', width: '100%', margin: '0 auto', padding: '0 16px 24px 16px' }}>
             <div className="section-reveal section-reveal-delay-2" style={{ display: 'grid', gap: '20px' }}>
-              <div className="glass-panel" style={{ minHeight: '168px', background: 'rgba(28,30,36,0.62)' }} />
-              <div className="glass-panel" style={{ minHeight: '220px', background: 'rgba(28,30,36,0.58)' }} />
+              <div className="reader-panel-surface glass-panel" style={{ minHeight: '168px' }} />
+              <div className="reader-panel-surface glass-panel" style={{ minHeight: '220px' }} />
             </div>
           </div>
         )}
@@ -891,6 +941,12 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const [watchlistEntries, setWatchlistEntries] = useState(() => getWatchlist());
   const [hideRead] = useState(getHideRead);
   const [isMobile, setIsMobile] = useState(() => isReaderMobileViewport(window.innerWidth, 'ontouchstart' in window));
+  const { toolbarRef, compact: toolbarCompact } = useCompactReaderToolbar(isMobile);
+  const isIosWebKit = useMemo(() => isIosWebKitPlatform(
+    navigator.userAgent,
+    navigator.platform,
+    navigator.maxTouchPoints,
+  ), []);
   const [serverTracksProgress, setServerTracksProgress] = useState(() => {
     const stored = getStoredServerInfo();
     if (stored && typeof stored.server_tracks_progress === 'boolean') {
@@ -2359,21 +2415,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const leftDisabled = isLTR ? currentIndex === 0 : currentIndex === pages.length - 1;
   const rightDisabled = isLTR ? currentIndex === pages.length - 1 : currentIndex === 0;
 
-  const btnBase = {
-    padding: '8px 14px',
-    background: 'rgba(255, 255, 255, 0.06)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    color: '#ccc',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '500',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease',
-    flexShrink: 0,
-  };
+  const btnBase = getTopBarButtonStyle(toolbarCompact);
 
   const navBtnBase = getPageNavButtonStyle(isMobile);
   const normalReaderFrameStyle = getNormalReaderFrameStyle(isMobile);
@@ -2383,16 +2425,14 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       : settings.scaleMode === 'original' ? { width: 'auto', height: 'auto', maxWidth: 'none', maxHeight: 'none', objectFit: 'none' }
         : { width: '100%', height: '100%', objectFit: 'contain' };
   const transformStyle = settings.rotateWidePagesEnabled ? { transform: 'rotate(90deg) scale(.82)' } : {};
-  const normalVisibleIndex = Math.max(0, Math.min(pageLoadPhase.visibleIndex, Math.max(pages.length - 1, 0)));
   const normalTargetIndex = Math.max(0, Math.min(currentIndex, Math.max(pages.length - 1, 0)));
   const targetPending = pages.length > 0 && currentIndex !== displayedIndex;
   const loadingUiVisible = targetPending && pageLoadPhase.status === 'loading' && loadingUiArmed;
   const normalPagePending = viewMode === 'normal' && loadingUiVisible;
-  const normalPageError = viewMode === 'normal' && targetPending && pageLoadPhase.status === 'error' && pageLoadPhase.targetIndex === normalTargetIndex;
   const pageLoadingProgress = Math.max(0, Math.min(1, pageLoadPhase.progress || 0));
   const immersiveManualPending = viewMode === 'immersive' && !settings.autoTurnActive && loadingUiVisible;
   const immersiveManualError = viewMode === 'immersive' && !settings.autoTurnActive && targetPending && pageLoadPhase.status === 'error';
-  const normalDisplayIndex = normalPagePending || normalPageError ? normalVisibleIndex : normalTargetIndex;
+  const normalDisplayIndex = normalTargetIndex;
   const pageIndicatorShouldRender = pageIndicatorVisibilityMode !== 'hidden';
   const pageIndicatorShouldShow = zoomScale === 1.0 && (
     pageIndicatorVisibilityMode === 'pinned' ||
@@ -2406,10 +2446,12 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   return (
     <div
       ref={containerRef}
+      className="reader-root"
+      data-ios={isIosWebKit ? 'true' : 'false'}
       style={{
         minHeight: '100vh',
         background: viewMode === 'normal' ? 'transparent' : '#000',
-        color: '#fff',
+        color: viewMode === 'immersive' ? '#fff' : 'var(--text-main)',
       }}
     >
       <div
@@ -2419,13 +2461,16 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       >
         {/* ===== Top Bar ===== */}
         <div
+          ref={toolbarRef}
+          className="reader-toolbar"
           data-reader-toolbar
           data-mobile={isMobile ? 'true' : 'false'}
+          data-compact={toolbarCompact ? 'true' : 'false'}
           style={{
             padding: '14px 24px',
-            background: 'rgba(15, 18, 25, 0.9)',
+            background: 'var(--reader-toolbar-bg)',
             backdropFilter: 'blur(16px)',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid var(--reader-control-border)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -2435,9 +2480,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             transition: 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '16px', flex: '1 0 0', minWidth: 0 }}>
+          <div className="reader-toolbar-group reader-toolbar-group-left" style={{ display: 'flex', alignItems: 'center', gap: toolbarCompact ? '6px' : '16px', flex: '1 0 0', minWidth: 0 }}>
             <button className="reader-toolbar-button" style={btnBase} onClick={handleGoBack} title="返回" aria-label="返回">
-              {isMobile ? <ToolbarGlyph name="back" size={20} /> : '← 返回'}
+              <ReaderToolbarButtonContent icon="back" label="返回" size={20} />
             </button>
             {viewMode !== 'immersive' && (
               <button
@@ -2449,13 +2494,14 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 title="查看阅读历史和待看归档"
                 aria-label="查看阅读历史和待看归档"
               >
-                {isMobile ? <ToolbarGlyph name="history" size={18} /> : '归档列表'}
+                <ReaderToolbarButtonContent icon="history" label="归档列表" />
               </button>
             )}
           </div>
 
-          {!isMobile && (
+          {!toolbarCompact && (
             <span
+              className="reader-toolbar-title"
               style={{
                 fontSize: '15px',
                 fontWeight: 'bold',
@@ -2471,14 +2517,15 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               {archive?.title}
             </span>
           )}
-          {isMobile && <span style={{ flex: '0 0 0', minWidth: 0 }} />}
+          {toolbarCompact && <span style={{ flex: '0 0 0', minWidth: 0 }} />}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px', flex: '1 0 0', justifyContent: 'flex-end', minWidth: 0 }}>
+          <div className="reader-toolbar-group reader-toolbar-group-right" style={{ display: 'flex', alignItems: 'center', gap: toolbarCompact ? '6px' : '8px', flex: '1 0 0', justifyContent: 'flex-end', minWidth: 0 }}>
             {viewMode === 'immersive' && (
               <button className="reader-toolbar-button" style={btnBase} onClick={() => updateSettings((s) => ({ ...s, autoTurnActive: !s.autoTurnActive }))} title={settings.autoTurnActive ? '停止翻页' : '自动翻页'} aria-label={settings.autoTurnActive ? '停止翻页' : '自动翻页'}>
-                {isMobile
-                  ? <ToolbarGlyph name={settings.autoTurnActive ? 'pause' : 'play'} size={18} />
-                  : (settings.autoTurnActive ? '停止翻页' : '自动翻页')}
+                <ReaderToolbarButtonContent
+                  icon={settings.autoTurnActive ? 'pause' : 'play'}
+                  label={settings.autoTurnActive ? '停止翻页' : '自动翻页'}
+                />
               </button>
             )}
             <button
@@ -2488,9 +2535,10 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               title={viewMode === 'normal' ? '沉浸模式' : '退出沉浸'}
               aria-label={viewMode === 'normal' ? '沉浸模式' : '退出沉浸'}
             >
-              {isMobile
-                ? <ToolbarGlyph name={viewMode === 'normal' ? 'fullscreen' : 'fullscreenExit'} size={18} />
-                : (viewMode === 'normal' ? '沉浸模式' : '退出沉浸')}
+              <ReaderToolbarButtonContent
+                icon={viewMode === 'normal' ? 'fullscreen' : 'fullscreenExit'}
+                label={viewMode === 'normal' ? '沉浸模式' : '退出沉浸'}
+              />
             </button>
             {viewMode !== 'immersive' && (
               <>
@@ -2506,17 +2554,18 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                   title={`将当前第 ${currentIndex + 1} 页设为封面`}
                   aria-label={`将当前第 ${currentIndex + 1} 页设为封面`}
                 >
-                  {isMobile
-                    ? <ToolbarGlyph name="cover" size={18} />
-                    : (coverSetting ? '设置中...' : coverSetPage === currentIndex + 1 ? '已设为封面' : '设为封面')}
+                  <ReaderToolbarButtonContent
+                    icon="cover"
+                    label={coverSetting ? '设置中...' : coverSetPage === currentIndex + 1 ? '已设为封面' : '设为封面'}
+                  />
                 </button>
                 <button className="reader-toolbar-button" style={btnBase} data-panel-toggle onClick={() => { setShowSettingsPanel((v) => !v); setShowArchivePanel(false); }} title="阅读设定" aria-label="阅读设定">
-                  {isMobile ? <ToolbarGlyph name="settings" size={18} /> : '阅读设定'}
+                  <ReaderToolbarButtonContent icon="settings" label="阅读设定" />
                 </button>
               </>
             )}
             <button className="reader-toolbar-button" style={btnBase} onClick={() => setShowDrawer(true)} title="缩略面板" aria-label="缩略面板">
-              {isMobile ? <ToolbarGlyph name="grid" size={18} /> : '缩略面板'}
+              <ReaderToolbarButtonContent icon="grid" label="缩略面板" />
             </button>
           </div>
         </div>
@@ -2524,7 +2573,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         {/* ===== Settings Panel ===== */}
         {showSettingsPanel && (
           <div data-panel="settings"
-            className="glass-panel dropdown-animate"
+            className="reader-panel-surface glass-panel dropdown-animate"
             style={{
               position: 'absolute',
               top: '62px',
@@ -2535,14 +2584,14 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               width: isMobile ? 'calc(100vw - 40px)' : '380px',
               maxHeight: '80vh',
               boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid var(--reader-control-border)',
               display: 'flex', flexDirection: 'column',
             }}
           >
             <div className="no-scrollbar" style={{ overflowY: 'auto', flex: 1 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 600, marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>翻页设定</div>
+                <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 600, marginBottom: '10px', borderBottom: '1px solid var(--reader-control-border)', paddingBottom: '6px' }}>翻页设定</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                     <span style={{ flexShrink: 0 }}>翻页流向</span>
@@ -2581,7 +2630,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                       value={preloadInput}
                       onChange={(e) => { const raw = e.target.value; setPreloadInput(raw); const n = parseInt(raw, 10); if (!isNaN(n) && n >= 1 && n <= 10) { updateSettings((s) => ({ ...s, preloadCount: n })); } }}
                       onBlur={() => { const n = parseInt(preloadInput, 10); if (isNaN(n) || n < 1) { setPreloadInput('1'); updateSettings((s) => ({ ...s, preloadCount: 1 })); } else if (n > 10) { setPreloadInput('10'); updateSettings((s) => ({ ...s, preloadCount: 10 })); } }}
-                      style={{ width: '56px', padding: '5px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#ccc', textAlign: 'center' }}
+                      style={{ width: '56px', padding: '5px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid var(--reader-control-border)', background: 'var(--comment-input-bg)', color: 'var(--text-main)', textAlign: 'center' }}
                     />
                   </label>
                   <label style={{ fontSize: '12px', color: 'var(--text-sub)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2590,7 +2639,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                       value={autoTurnInput}
                       onChange={(e) => { const raw = e.target.value; setAutoTurnInput(raw); const n = parseInt(raw, 10); if (!isNaN(n) && n >= 1 && n <= 60) { updateSettings((s) => ({ ...s, autoTurnInterval: n })); } }}
                       onBlur={() => { const n = parseInt(autoTurnInput, 10); if (isNaN(n) || n < 1) { setAutoTurnInput('1'); updateSettings((s) => ({ ...s, autoTurnInterval: 1 })); } else if (n > 60) { setAutoTurnInput('60'); updateSettings((s) => ({ ...s, autoTurnInterval: 60 })); } }}
-                      style={{ width: '56px', padding: '5px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#ccc', textAlign: 'center' }}
+                      style={{ width: '56px', padding: '5px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid var(--reader-control-border)', background: 'var(--comment-input-bg)', color: 'var(--text-main)', textAlign: 'center' }}
                     />
                   </label>
                 </div>
@@ -2618,6 +2667,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         {viewMode === 'normal' ? (
           <div style={normalReaderStageLayoutStyle}>
             <div
+              className="reader-stage-frame"
               style={{ ...normalReaderFrameStyle, position: 'relative' }}
             >
               {webtoonActive ? <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: settings.webtoonGap, overflow: 'auto' }}>
@@ -2644,17 +2694,17 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                     bottom: isMobile ? '14px' : '18px',
                     padding: isMobile ? '8px 12px' : '10px 14px',
                     borderRadius: '12px',
-                    background: 'rgba(8,12,20,0.78)',
-                    border: '1px solid rgba(127,184,255,0.16)',
+                    background: 'var(--reader-panel-bg)',
+                    border: '1px solid var(--reader-control-border)',
                     backdropFilter: 'blur(10px)',
                     boxShadow: '0 10px 24px rgba(0,0,0,0.24)',
                     pointerEvents: 'none',
                   }}
                 >
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#eef4ff' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
                     {`第 ${normalTargetIndex + 1} 页正在加载`}
                   </div>
-                  <div style={{ marginTop: '8px', width: '100%', height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                  <div style={{ marginTop: '8px', width: '100%', height: '4px', borderRadius: '999px', background: 'var(--reader-skeleton-base)', overflow: 'hidden' }}>
                     <div
                       style={{
                         width: `${Math.round(pageLoadingProgress * 100)}%`,
@@ -2672,10 +2722,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', padding: '20px 8px', flexShrink: 0 }}>
               <button
+                className="reader-page-nav-button"
                 onClick={leftAction}
                 disabled={leftDisabled}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.transform = 'scale(1)'; }}
                 style={{ ...navBtnBase, opacity: leftDisabled ? 0.3 : 1 }}
               >
                 ‹
@@ -2684,10 +2733,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                   {normalTargetIndex + 1} / {pages.length}
               </span>
               <button
+                className="reader-page-nav-button"
                 onClick={rightAction}
                 disabled={rightDisabled}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.transform = 'scale(1)'; }}
                 style={{ ...navBtnBase, opacity: rightDisabled ? 0.3 : 1 }}
               >
                 ›
@@ -2918,15 +2966,16 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         onClick={() => setShowDrawer(false)}
       >
         <div
+          className="reader-panel-surface"
           style={{
-            width: '100%', maxWidth: '420px', height: '100%', background: '#1c1e24', padding: '24px',
+            width: '100%', maxWidth: '420px', height: '100%', background: 'var(--reader-panel-bg)', padding: '24px',
             display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
             transform: showDrawer ? 'translateX(0)' : 'translateX(100%)',
             transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--reader-control-border)', paddingBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
               <h3 style={{ margin: 0, fontSize: '18px' }}>归档信息</h3>
               <button className="reader-drawer-icon-button" onClick={() => navigateToMetadata(archiveId)} title="编辑元数据" aria-label="编辑元数据">
@@ -2938,9 +2987,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             </button>
           </div>
 
-          <div style={{ marginBottom: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: '35%', flexShrink: 0 }}>
+          <div style={{ marginBottom: '20px', background: 'var(--surface-2)', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: '35%', flexShrink: 0 }}>
             <div style={{ padding: '14px 14px 0 14px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#e3e9f3', marginBottom: '14px', lineHeight: 1.4, wordBreak: 'break-word' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '14px', lineHeight: 1.4, wordBreak: 'break-word' }}>
                 {archive?.title}
               </div>
             </div>
@@ -2981,7 +3030,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                           borderRadius: '5px',
                           background: `${group.color}18`,
                           border: `1px solid ${group.color}40`,
-                          color: '#e3e9f3',
+                          color: 'var(--text-main)',
                           fontSize: '10px',
                           whiteSpace: 'nowrap',
                           lineHeight: '1.5',
@@ -3007,7 +3056,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             </div>
           </div>
 
-          <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#aaa' }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-sub)' }}>
             页面总览 · 共{pages.length}页
           </h4>
           <div style={{ flex: 1, minHeight: 0 }}>
@@ -3044,8 +3093,8 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                         borderRadius: '6px',
                         overflow: 'hidden',
                         cursor: 'pointer',
-                        border: currentIndex === idx ? '2px solid #00b4d8' : '1px solid rgba(255,255,255,0.1)',
-                        background: '#0a0b0d',
+                        border: currentIndex === idx ? '2px solid var(--accent)' : '1px solid var(--reader-control-border)',
+                        background: 'var(--cover-bg)',
                         paddingBottom: '130%',
                         height: 0,
                       }}

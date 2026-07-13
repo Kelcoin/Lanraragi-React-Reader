@@ -642,7 +642,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             display: '-webkit-box',
             WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             lineHeight: '1.4', minHeight: '36.4px',
-            ...(isMobile ? { cursor: 'pointer', color: 'var(--accent)' } : {}),
+          ...(isMobile ? { cursor: 'pointer' } : {}),
           }}
           className="archive-title"
         >

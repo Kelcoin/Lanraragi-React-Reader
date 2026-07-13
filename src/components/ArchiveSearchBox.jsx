@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useId, useRef, useState } from 'react';
 import TagSuggest from './TagSuggest';
 import { replaceCurrentArchiveSearchToken } from '../lib/archiveSearch';
 import { deleteFilterPreset, readFilterPresets, saveFilterPreset } from '../lib/filterPresets';
@@ -8,6 +8,7 @@ export default function ArchiveSearchBox({ query, setQuery, placeholder }) {
   const suggestActiveRef = useRef(false);
   const [presets, setPresets] = useState(readFilterPresets);
   const [showPresets, setShowPresets] = useState(false);
+  const presetMenuId = useId();
 
   const handleTagSelect = useCallback((tag) => {
     suggestActiveRef.current = false;
@@ -49,12 +50,22 @@ export default function ArchiveSearchBox({ query, setQuery, placeholder }) {
           )}
           <TagSuggest inputValue={query} onSelectTag={handleTagSelect} containerRef={searchBoxRef} onSetActive={(active) => { suggestActiveRef.current = active; }} />
         </div>
-        <button type="button" className="btn" onClick={() => setShowPresets(v => !v)} style={{ padding: '10px 16px', fontSize: '13px', flexShrink: 0 }}>
-          筛选
+        <button
+          type="button"
+          className="btn archive-search-menu-button"
+          onClick={() => setShowPresets(v => !v)}
+          aria-expanded={showPresets}
+          aria-controls={presetMenuId}
+          aria-label={showPresets ? '收起筛选方案' : '展开筛选方案'}
+        >
+          <span className="archive-search-menu-label">筛选方案</span>
+          <svg className="archive-search-chevron" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M3.5 6l4.5 4 4.5-4z" />
+          </svg>
         </button>
       </div>
       {showPresets && (
-        <div className="archive-search-presets">
+        <div className="archive-search-presets dropdown-animate" id={presetMenuId}>
           <div className="archive-search-preset-actions">
             <button type="button" className="btn" onClick={savePreset}>保存当前方案</button>
             <button type="button" className="btn" onClick={() => { setQuery(''); setShowPresets(false); }}>清空筛选</button>

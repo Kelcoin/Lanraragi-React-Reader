@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useReducer } from 'react';
 import { createPortal } from 'react-dom';
 import { lrrApi } from '../lib/api';
 import { getHistory, getHideRead, setHideRead, getCropCover, setCropCover, getArchiveBrowseMode, setArchiveBrowseMode, removeHistoryItem, loadHistoryState } from '../lib/history';
@@ -484,6 +484,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const [watchlistOverflow, setWatchlistOverflow] = useState(false);
   const coldRestoreRef = useRef(coldRestoreBoot);
   const navigationRestoreRef = useRef(!!navSnapshot && !!homeSnapshot);
+  const verticalScrollRestoredRef = useRef(false);
   const wasBackgroundedRef = useRef(false);
   const resumeRefreshSuppressedUntilRef = useRef(0);
   const serverProbePromiseRef = useRef(null);
@@ -670,18 +671,19 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     }
   }, [scrollToArchives]);
 
+  // Restore vertical scroll before first paint. Never write window scroll again after this point.
+  useLayoutEffect(() => {
+    if (!navigationRestoreRef.current || !homeSnapshot || verticalScrollRestoredRef.current) return;
+    verticalScrollRestoredRef.current = true;
+    if (typeof homeSnapshot.scrollY === 'number') {
+      window.scrollTo({ top: homeSnapshot.scrollY, left: 0, behavior: 'auto' });
+    }
+  }, [homeSnapshot]);
+
+  // Restore horizontal scrollers after mount. This effect must not modify window scroll.
   useEffect(() => {
     if (!navigationRestoreRef.current || !homeSnapshot) return undefined;
-    let cancelled = false;
-    let innerFrame = 0;
-    const interactionEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
-    const stopRestore = () => {
-      cancelled = true;
-      navigationRestoreRef.current = false;
-    };
-    interactionEvents.forEach((eventName) => window.addEventListener(eventName, stopRestore, { passive: true, once: true }));
-    const restoreScroll = () => {
-      if (cancelled) return;
+    const frame = requestAnimationFrame(() => {
       if (typeof homeSnapshot.historyScrollLeft === 'number') {
         const el = getHistoryScrollerNode?.();
         if (el) el.scrollLeft = homeSnapshot.historyScrollLeft;
@@ -694,21 +696,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         const el = getRandomScrollerNode?.();
         if (el) el.scrollLeft = homeSnapshot.randomScrollLeft;
       }
-      if (typeof homeSnapshot.scrollY === 'number') {
-        window.scrollTo({ top: homeSnapshot.scrollY, left: 0, behavior: 'auto' });
-      }
       navigationRestoreRef.current = false;
-      interactionEvents.forEach((eventName) => window.removeEventListener(eventName, stopRestore));
-    };
-    const frame = requestAnimationFrame(() => {
-      innerFrame = requestAnimationFrame(restoreScroll);
     });
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-      if (innerFrame) cancelAnimationFrame(innerFrame);
-      interactionEvents.forEach((eventName) => window.removeEventListener(eventName, stopRestore));
-    };
+    return () => cancelAnimationFrame(frame);
   }, [getHistoryScrollerNode, getRandomScrollerNode, getWatchlistScrollerNode, homeSnapshot]);
 
   useEffect(() => {
