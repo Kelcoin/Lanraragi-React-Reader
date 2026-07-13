@@ -7,6 +7,7 @@ import { NamespaceGlyph, stripDecoratedLabel } from './AppGlyphs';
 import { useViewportWidth } from '../lib/viewport';
 
 const NAMESPACE_COLORS = NAMESPACE_COLORS_MAP;
+const archiveAspectRatioCache = new Map();
 
 function calculatePanelPosition(cardRect, panelHeight, pointerY = null) {
   const panelWidth = 320;
@@ -82,6 +83,7 @@ async function readImageAspectRatio(src) {
 }
 
 export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveContextMenu, longPressTitle = '', currentPage, progress, showProgressBar, noCrop, cacheOnly = false, wrapStyle, className, overlay, selectionMode = false, selected = false, onSelectToggle }) {
+  const id = archive.arcid || archive.id;
   const [hovered, setHovered] = useState(false);
   const [closing, setClosing] = useState(false);
   const [thumbSrc, setThumbSrc] = useState(null);
@@ -90,42 +92,23 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const [panelPos, setPanelPos] = useState({ top: 0, left: 0 });
   const isMobile = useViewportWidth() < 768;
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState(null);
+  const [aspectRatio, setAspectRatio] = useState(() => archiveAspectRatioCache.get(String(id)) ?? null);
   const cardRef = useRef(null);
   const panelRef = useRef(null);
   const imgRef = useRef(null);
   const leaveTimerRef = useRef(null);
   const thumbObjectUrlRef = useRef(null);
-  const [shouldLoadThumb, setShouldLoadThumb] = useState(cacheOnly);
   const [allowNetworkFallback, setAllowNetworkFallback] = useState(!cacheOnly);
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
   const pointerStartRef = useRef(null);
   const hoverPointerYRef = useRef(null);
-  const id = archive.arcid || archive.id;
 
   useEffect(() => {
     if (!cacheOnly) {
       setAllowNetworkFallback(true);
     }
   }, [cacheOnly]);
-
-  useEffect(() => {
-    if (cacheOnly || allowNetworkFallback) {
-      setShouldLoadThumb(true);
-      return undefined;
-    }
-    const el = cardRef.current;
-    if (!el) return undefined;
-    const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        setShouldLoadThumb(true);
-        io.disconnect();
-      }
-    }, { rootMargin: '400px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [allowNetworkFallback, cacheOnly, id]);
 
   const tags = archive.tags?.split(',').map((tag) => tag.trim()).filter(Boolean) || [];
   const categorizedTags = categorizeTags(tags);
@@ -182,23 +165,28 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const isWide = noCrop && aspectRatio != null && aspectRatio > 1.0;
   const baseMetaFontSize = isMobile ? 10.5 : 11;
 
+  const rememberAspectRatio = useCallback((next) => {
+    if (!Number.isFinite(next) || next <= 0) return;
+    archiveAspectRatioCache.set(String(id), next);
+    setAspectRatio((prev) => (
+      prev != null && Math.abs(prev - next) < 0.001 ? prev : next
+    ));
+  }, [id]);
+
   const updateAspectRatio = useCallback((img) => {
     const nw = img?.naturalWidth;
     const nh = img?.naturalHeight;
     if (nw && nh) {
-      setAspectRatio((prev) => {
-        const next = nw / nh;
-        return prev != null && Math.abs(prev - next) < 0.001 ? prev : next;
-      });
+      rememberAspectRatio(nw / nh);
     }
-  }, []);
+  }, [rememberAspectRatio]);
 
   const handleImageLoad = useCallback((e) => {
     updateAspectRatio(e.target);
   }, [updateAspectRatio]);
 
   useEffect(() => {
-    setAspectRatio(null);
+    setAspectRatio(archiveAspectRatioCache.get(String(id)) ?? null);
   }, [id]);
 
   useEffect(() => {
@@ -206,10 +194,9 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
     updateAspectRatio(imgRef.current);
   }, [thumbSrc, thumbState, updateAspectRatio]);
 
-  // ===== Lazy thumbnail: only load near viewport (biggest memory win) =====
+  // Load immediately so initial paint never depends on a later scroll/click signal.
   useEffect(() => {
     let isMounted = true;
-    if (!shouldLoadThumb) return undefined;
 
     const loadThumbnail = async () => {
       if (!id) { setThumbState('error'); return; }
@@ -233,7 +220,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
         if (src) {
           const ratio = noCrop ? await readImageAspectRatio(src) : null;
           if (!isMounted) return;
-          if (ratio) setAspectRatio(ratio);
+          if (ratio) rememberAspectRatio(ratio);
           thumbObjectUrlRef.current = src;
           setThumbSrc(src);
           setThumbState('ready');
@@ -259,7 +246,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
     return () => {
       isMounted = false;
     };
-  }, [allowNetworkFallback, cacheOnly, id, noCrop, retryKey, shouldLoadThumb]);
+  }, [allowNetworkFallback, cacheOnly, id, noCrop, rememberAspectRatio, retryKey]);
 
   const translateDisplayTag = useCallback((rawTag) => {
     if (!rawTag) return rawTag;

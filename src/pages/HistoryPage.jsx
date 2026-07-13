@@ -277,7 +277,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
                   {selectionMode ? '退出多选' : '多选'}
                 </button>
               )}
-              <span>隐藏已读完</span>
+              <span>历史记录中隐藏已读完</span>
               <button
                 type="button"
                 onClick={handleToggleHideRead}
@@ -292,7 +292,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
                   transition: 'background 0.2s ease',
                   flexShrink: 0,
                 }}
-                title={hideRead ? '显示已读完' : '隐藏已读完'}
+                title={hideRead ? '历史记录中显示已读完' : '历史记录中隐藏已读完'}
               >
                 <span style={{
                   position: 'absolute',

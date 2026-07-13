@@ -149,7 +149,7 @@ npm run build
 
 ### 版本规则
 
-当前版本为 `1.1.0`。项目遵循 SemVer：`fix:` 与文档/维护更新提升 patch，`feat:` 提升 minor，提交主题含 `!` 或正文含 `BREAKING CHANGE` 时提升 major。页面版本号附带 7 位 Git Hash，便于确认实际构建。
+当前版本为 `1.2.0`。项目遵循 SemVer：`fix:` 与文档/维护更新提升 patch，`feat:` 提升 minor，提交主题含 `!` 或正文含 `BREAKING CHANGE` 时提升 major。页面版本号附带 7 位 Git Hash，便于确认实际构建。
 
 ## Cloudflare Worker
 
@@ -225,8 +225,8 @@ E-Hentai 评论区和同步删除 E-Hentai 收藏夹需要合法 E-Hentai Cookie
 首页右上角“设置”中可以配置：
 
 - 裁剪封面。
-- 隐藏已读完。
-- 档案浏览模式：滚动模式滑到底部自动加载更多；分页模式按当前屏幕列数和可见行数智能计算每页数量，并用页码手动切换。
+- 历史记录中隐藏已读完。
+- 档案浏览模式：滚动模式滑到底部自动加载更多；分页模式按当前屏幕列数计算每页数量，最少显示 20 个，并用页码手动切换。
 - E-Hentai 评论区与 E-Hentai Cookie。Cookie 和访问 Token 默认以模糊方式显示，鼠标悬浮或聚焦时显示原文。
 - 同步删除 E-Hentai 收藏夹。
 - Cloudflare Worker 端点与访问 Token。

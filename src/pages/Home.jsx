@@ -26,7 +26,7 @@ import { claimColdRestoreRoute, consumeHomeNavigationSnapshot, getBootState, loa
 import { getStoredServerInfo, loadServerInfo } from '../lib/serverInfoCache';
 import { useHorizontalScroller } from '../lib/horizontalScroller';
 import { navigateDeduplicate, navigateHistory, navigateHome, navigateToMetadata, navigateUpload, navigateWatchlist } from '../lib/navigation';
-import { ARCHIVE_BROWSE_MODES, ARCHIVE_PAGE_SIZE, clampArchivePage, getArchivePageCount, getArchivePageStart, getSmartArchivePageSize } from '../lib/archivePagination';
+import { ARCHIVE_BROWSE_MODES, ARCHIVE_PAGE_SIZE, clampArchivePage, getArchivePageAfterResize, getArchivePageCount, getArchivePageStart, getLastArchiveRowCentering, getSmartArchivePageSize } from '../lib/archivePagination';
 import { reduceArchiveRefreshPhase } from '../lib/archiveRefreshMotion';
 
 const FILTER_KEY = 'lrr_filter';
@@ -453,6 +453,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const didApplyUrlFilterRef = useRef(false);
   const archivesSectionRef = useRef(null);
   const gridRef = useRef(null);
+  const archivePageRef = useRef(archivePage);
+  const archivePageSizeRef = useRef(archivePageSize);
   const sentinelRef = useRef(null);
   const pendingArchivesScrollRef = useRef(false);
   const archivesRef = useRef([]);
@@ -460,6 +462,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const randomsAutoFillBlockedRef = useRef(false);
   const randomsAutoFillInFlightRef = useRef(false);
   useEffect(() => { archivesRef.current = archives; }, [archives]);
+  useEffect(() => { archivePageRef.current = archivePage; }, [archivePage]);
+  useEffect(() => { archivePageSizeRef.current = archivePageSize; }, [archivePageSize]);
   useEffect(() => { randomsRef.current = randoms; }, [randoms]);
   const archivesLenRef = useRef(0);
   const hasMoreRef = useRef(true);
@@ -931,16 +935,55 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       const gridWidth = gridRef.current?.clientWidth || window.innerWidth - 32;
       const gap = window.innerWidth < 600 ? 10 : 16;
       const cols = Math.max(1, Math.floor((gridWidth + gap) / (150 + gap)));
-      const estimatedCardHeight = cropCover ? 302 : 236;
-      const availableHeight = Math.max(estimatedCardHeight * 3, window.innerHeight - 250);
-      const rows = Math.max(3, Math.floor(availableHeight / estimatedCardHeight));
+      const nextPageSize = getSmartArchivePageSize({ columns: cols, rows: 4, minimum: 20 });
       setColumnsPerRow(cols);
-      setArchivePageSize(getSmartArchivePageSize({ columns: cols, rows }));
+      if (nextPageSize === archivePageSizeRef.current) return;
+      const nextPage = getArchivePageAfterResize(archivePageRef.current, archivePageSizeRef.current, nextPageSize);
+      archivePageRef.current = nextPage;
+      archivePageSizeRef.current = nextPageSize;
+      setArchivePage(nextPage);
+      setArchivePageInput(String(nextPage + 1));
+      setArchivePageSize(nextPageSize);
     };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, [cropCover]);
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || archiveBrowseMode !== ARCHIVE_BROWSE_MODES.paged) return undefined;
+
+    let frame = 0;
+    const centerLastRow = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const items = Array.from(grid.children);
+        items.forEach((item) => { item.style.translate = ''; });
+        const { indexes, offset } = getLastArchiveRowCentering(
+          grid.getBoundingClientRect(),
+          items.map((item) => item.getBoundingClientRect()),
+        );
+        if (Math.abs(offset) < 1) return;
+        indexes.forEach((index) => { items[index].style.translate = `${offset}px 0`; });
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(centerLastRow);
+    const mutationObserver = new MutationObserver(centerLastRow);
+    resizeObserver.observe(grid);
+    mutationObserver.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', centerLastRow);
+    centerLastRow();
+
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', centerLastRow);
+      Array.from(grid.children).forEach((item) => { item.style.translate = ''; });
+    };
+  }, [archiveBrowseMode, archivePage, archivePageSize, archives.length, isNarrow]);
 
   const doFetch = useCallback(async (isReset, options = {}) => {
     const mode = options.modeOverride || archiveBrowseMode;
@@ -979,6 +1022,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           if (nextData.length < ARCHIVE_PAGE_SIZE) break;
         }
       }
+      if (isPagedMode && data.length > pageSize) data = data.slice(0, pageSize);
       if (fetchSeq !== archiveFetchSeqRef.current) return false;
       const total = getSearchTotal(res, data.length, isReset ? null : archiveTotal);
       setArchiveTotal(total);
@@ -1398,11 +1442,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const archiveCountLabel = useMemo(() => {
     if (loading && archives.length === 0) return '正在获取结果...';
     if (archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged) {
-      const pageText = `第 ${archivePage + 1} 页`;
       if (Number.isFinite(Number(archiveTotal))) {
-        return `${pageText} / 共 ${getArchivePageCount(archiveTotal, archivePageSize)} 页 · 共 ${Number(archiveTotal).toLocaleString()} 个档案`;
+        return `${archivePage + 1}/${getArchivePageCount(archiveTotal, archivePageSize)}页 · ${Number(archiveTotal).toLocaleString()}个`;
       }
-      return archives.length > 0 ? `${pageText} · 当前页 ${archives.length} 个` : pageText;
+      return archives.length > 0 ? `${archivePage + 1}页 · ${archives.length}个` : `${archivePage + 1}页`;
     }
     if (Number.isFinite(Number(archiveTotal))) {
       return filter.active
@@ -1465,6 +1508,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   }, []);
 
   useEffect(() => {
+    if (archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged) return undefined;
     if (coldRestoreRef.current) return undefined;
     const refresh = () => {
       if (document.visibilityState !== 'visible' || loadingRef.current) return;
@@ -1473,9 +1517,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     };
     const timer = setInterval(refresh, ARCHIVES_AUTO_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [doFetch, skipResumeTriggeredRefresh]);
+  }, [archiveBrowseMode, doFetch, skipResumeTriggeredRefresh]);
 
   useEffect(() => {
+    if (archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged) return undefined;
     const handleFocusRefresh = () => {
       if (coldRestoreRef.current || document.visibilityState !== 'visible') return;
       const now = Date.now();
@@ -1489,7 +1534,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       window.removeEventListener('focus', handleFocusRefresh);
       document.removeEventListener('visibilitychange', handleFocusRefresh);
     };
-  }, [doFetch, skipResumeTriggeredRefresh]);
+  }, [archiveBrowseMode, doFetch, skipResumeTriggeredRefresh]);
 
   const handleCategoryClick = useCallback((cat) => {
     const tag = cat.search || `category:${cat.name}$`;
@@ -1695,10 +1740,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       }
     `}</style>
     <div style={{ padding: isNarrow ? '16px 10px' : '24px 20px', maxWidth: '1680px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', marginBottom: '32px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 translate="no" style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            Lanraragi React Reader
+      <div className="home-topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', marginBottom: '32px', flexWrap: 'wrap' }}>
+        <div className="home-brand">
+          <h1 className="home-brand-title" translate="no" style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span className="home-project-name">Lanraragi React Reader</span>
             {serverOnline !== null && (
               <button
                 type="button"
@@ -1752,9 +1797,11 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               </button>
             )}
           </h1>
-          <div style={{ color: 'var(--text-sub)', fontSize: '14px' }}>欢迎回来，继续你的探索之旅</div>
+          <div className="home-welcome" style={{ color: 'var(--text-sub)', fontSize: '14px' }}>
+            <span>欢迎回来</span><span className="home-welcome-detail">，继续你的探索之旅</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className="home-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button
             className="btn theme-mode-btn"
             type="button"
@@ -1970,7 +2017,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       <section ref={archivesSectionRef} className="glass-panel section-reveal section-reveal-delay-3" style={{ padding: isNarrow ? '20px 14px' : '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
           <div className="archive-toolbar-primary" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', minWidth: 0, flexWrap: 'wrap' }}>
+            <div className="archive-toolbar-summary" style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', minWidth: 0 }}>
               <SectionHeading glyph="archives" style={{ lineHeight: 1 }}>全部档案</SectionHeading>
               <span style={{ color: 'var(--text-sub)', fontSize: '12px', lineHeight: 1, paddingBottom: '1px' }}>
                 {archiveCountLabel}
@@ -2000,7 +2047,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           <div className="archive-selection-actions" data-mounted={archiveSelectionActionsMounted ? 'true' : 'false'} data-open={archiveSelectionMode ? 'true' : 'false'} aria-hidden={!archiveSelectionMode}>
             <div className="archive-selection-actions-inner">
               <span aria-live="polite" style={{ color: 'var(--accent)', fontSize: '12px', whiteSpace: 'nowrap' }}>已选 {selectedArchiveIds.size} 个</span>
-              <button className="btn" tabIndex={archiveSelectionMode ? 0 : -1} style={{ padding: '6px 12px', fontSize: '12px' }} onClick={toggleSelectAllVisibleArchives} disabled={visibleArchiveIds.length === 0 || archiveDeleting}>
+              <button className="btn archive-selection-primary" tabIndex={archiveSelectionMode ? 0 : -1} style={{ padding: '6px 12px', fontSize: '12px' }} onClick={toggleSelectAllVisibleArchives} disabled={visibleArchiveIds.length === 0 || archiveDeleting}>
                 {allVisibleSelected ? '取消全选' : '全选当前'}
               </button>
               <button className="btn archive-selection-delete" tabIndex={archiveSelectionMode ? 0 : -1} onClick={requestBulkArchiveDelete} disabled={selectedArchiveIds.size === 0 || archiveDeleting}>
@@ -2175,12 +2222,12 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </div>
         )}
 
-        <div ref={gridRef} className="archive-grid" data-refresh-phase={archiveRefreshPhase} aria-busy={archivesRefreshing} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
+        <div ref={gridRef} className={`archive-grid${archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged ? ' is-paged' : ''}`} data-refresh-phase={archiveRefreshPhase} aria-busy={archivesRefreshing} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
           {archives.length === 0 && loading ? (
             Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={`gsk-${i}`} />)
           ) : (
-            displayArchives.map((arc, index) => (
-              <ArchiveCard key={`${arc.arcid}-${index}`} className={watchlistIds.has(arc.arcid || arc.id) ? 'watchlist-card' : undefined} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} selectionMode={archiveSelectionMode} selected={selectedArchiveIds.has(arc.arcid || arc.id)} onSelectToggle={toggleArchiveSelection} />
+            displayArchives.map((arc) => (
+              <ArchiveCard key={arc.arcid || arc.id} className={watchlistIds.has(arc.arcid || arc.id) ? 'watchlist-card' : undefined} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} selectionMode={archiveSelectionMode} selected={selectedArchiveIds.has(arc.arcid || arc.id)} onSelectToggle={toggleArchiveSelection} />
             ))
           )}
         </div>
@@ -2268,8 +2315,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </label>
 
           <div className="settings-row">
-            <SettingHint text="阅读历史中不显示已经读到最后一页的归档，继续阅读列表会更短。">隐藏已读完</SettingHint>
-            <ToggleSwitch checked={hideRead} onChange={handleToggleHideRead} label="隐藏已读完" />
+            <SettingHint text="阅读历史中不显示已经读到最后一页的归档，继续阅读列表会更短。">历史记录中隐藏已读完</SettingHint>
+            <ToggleSwitch checked={hideRead} onChange={handleToggleHideRead} label="历史记录中隐藏已读完" />
           </div>
 
           <div className="settings-section">
@@ -2296,7 +2343,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                   gap: '12px',
                   maxHeight: readerSettings.ehEnabled ? '220px' : '0px',
                   opacity: readerSettings.ehEnabled ? 1 : 0,
-                  overflow: 'hidden',
+                  overflow: readerSettings.ehEnabled ? 'visible' : 'hidden',
                   transform: readerSettings.ehEnabled ? 'translateY(0)' : 'translateY(-6px)',
                   transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, transform 0.28s cubic-bezier(0.4,0,0.2,1)',
                   pointerEvents: readerSettings.ehEnabled ? 'auto' : 'none',

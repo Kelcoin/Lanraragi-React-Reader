@@ -11,6 +11,7 @@ import { DEFAULT_READER_SETTINGS, READER_SETTINGS_KEY, normalizeReaderSettings, 
 import { getReaderSkeletonToolbarGroups } from '../lib/readerSkeletonLayout';
 import {
   getReaderArchivePanelModel,
+  getReaderArchivePanelWindow,
   isIosWebKitPlatform,
   isReaderMobileViewport,
   shouldUseCompactReaderToolbar,
@@ -21,7 +22,7 @@ import { detectImageBorderInsets } from '../lib/readerImageTransform';
 import { getWorkerUrl, getSyncToken } from '../lib/worker-config';
 import { getBootState, markBackground, loadReaderSnapshot, saveReaderSnapshot } from '../lib/sessionState';
 import { getStoredServerInfo, loadServerInfo } from '../lib/serverInfoCache';
-import { navigateHome, navigateToArchive, navigateToMetadata, parseRouteFromLocation } from '../lib/navigation';
+import { navigateHistory, navigateHome, navigateToArchive, navigateToMetadata, navigateWatchlist, parseRouteFromLocation } from '../lib/navigation';
 import Recommendations from '../components/Recommendations';
 import EhComments from '../components/EhComments';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -484,26 +485,70 @@ const ReaderArchiveThumb = ({ archiveId, cacheOnly = false }) => {
   );
 };
 
-function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, onDelete, activeType, onTypeChange }) {
+function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, onDelete, activeType, onTypeChange, onViewMore }) {
+  const panelWindow = getReaderArchivePanelWindow(type, items);
+  const panelRef = useRef(null);
+  const contentRef = useRef(null);
+  const [readerArchivePanelHeight, setReaderArchivePanelHeight] = useState(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return undefined;
+    const handleWheel = (event) => {
+      const atTop = panel.scrollTop <= 0;
+      const atBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 1;
+      if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+        event.preventDefault();
+      }
+      event.stopPropagation();
+    };
+    panel.addEventListener('wheel', handleWheel, { passive: false });
+    return () => panel.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return undefined;
+    const updateHeight = () => {
+      const viewportLimit = Math.floor(window.innerHeight * 0.7);
+      setReaderArchivePanelHeight(Math.min(Math.ceil(content.scrollHeight) + 2, viewportLimit));
+    };
+    updateHeight();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateHeight);
+    observer?.observe(content);
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
+
   return (
     <div
+      ref={panelRef}
       data-panel={type}
-      className="reader-panel-surface glass-panel dropdown-animate no-scrollbar"
+      className="reader-archive-panel reader-panel-surface glass-panel dropdown-animate no-scrollbar"
       style={{
         position: 'absolute',
         top: '62px',
         left: '20px',
         zIndex: 110,
-        padding: '18px',
+        padding: 0,
         borderRadius: '14px',
         width: 'min(360px, calc(100vw - 40px))',
         boxSizing: 'border-box',
         maxHeight: '70vh',
+        height: readerArchivePanelHeight == null ? 'auto' : `${readerArchivePanelHeight}px`,
         overflowY: 'auto',
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-y',
+        WebkitOverflowScrolling: 'touch',
         boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
         border: '1px solid var(--reader-control-border)',
+        transition: 'height 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
       }}
     >
+      <div ref={contentRef} style={{ padding: '18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px', borderBottom: '1px solid var(--reader-control-border)', paddingBottom: '8px' }}>
         <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600 }}>{title}</span>
         <div className="reader-panel-tabs" role="group" aria-label="归档列表类型">
@@ -528,7 +573,7 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
         <div style={{ fontSize: '12px', color: 'var(--text-sub)', padding: '8px 0' }}>{emptyMessage}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {items.map((item) => {
+          {panelWindow.items.map((item) => {
             const id = item.id || item.arcid;
             const tags = (item.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
             const showNs = new Set(['category', 'parody', 'male', 'female']);
@@ -604,8 +649,19 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
               </div>
             );
           })}
+          {panelWindow.hasMore && onViewMore && (
+            <button
+              type="button"
+              className="reader-panel-view-more"
+              onClick={onViewMore}
+              aria-label={`查看全部${type === 'history' ? '阅读历史' : '待看归档'}，共 ${panelWindow.total} 本`}
+            >
+              查看更多（共 {panelWindow.total} 本）
+            </button>
+          )}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -2691,6 +2747,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             onDelete={archivePanel.onDelete}
             activeType={archivePanelType}
             onTypeChange={setArchivePanelType}
+            onViewMore={archivePanelType === 'history'
+              ? navigateHistory
+              : (archivePanelType === 'watchlist' ? navigateWatchlist : null)}
           />
         )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { ToolbarGlyph } from './AppGlyphs';
 
 const commentsCache = new Map();
 const CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -571,20 +572,23 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
   return (
     <div ref={sectionRef} data-lrr-eh-comments className="eh-comments glass-panel section-reveal section-reveal-delay-3" style={{ padding: '20px', marginTop: '20px' }}>
       <div className="eh-comments-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px' }}>
-        <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h3 className="eh-comments-title" style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ color: 'var(--accent)' }}>💬</span> E-Hentai 评论区
-          {loaded && <span style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 400 }}>{comments.length} 条</span>}
         </h3>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="eh-comments-actions" style={{ display: 'flex', gap: '8px' }}>
           <a
             href={jumpUrl} target="_blank" rel="noopener noreferrer"
-            className="btn"
-            style={{ padding: '5px 12px', fontSize: '12px', textDecoration: 'none' }}
+            className="btn eh-comment-action"
+            aria-label="跳转到 E-Hentai 画廊"
+            title="跳转画廊"
+            style={{ fontSize: '12px', textDecoration: 'none' }}
           >
-            跳转画廊
+            <span className="eh-comment-action-icon"><ToolbarGlyph name="external" size={16} /></span>
+            <span className="eh-comment-action-label">跳转画廊</span>
           </a>
-          <button className="btn" onClick={handleReload} disabled={loading} style={{ padding: '5px 12px', fontSize: '12px' }}>
-            {loading ? '加载中…' : '重新加载'}
+          <button className={`btn eh-comment-action${loading ? ' is-loading' : ''}`} onClick={handleReload} disabled={loading} aria-label={loading ? '正在重新加载评论' : '重新加载评论'} title="重新加载" style={{ fontSize: '12px' }}>
+            <span className="eh-comment-action-icon"><ToolbarGlyph name="reload" size={16} /></span>
+            <span className="eh-comment-action-label">{loading ? '加载中…' : '重新加载'}</span>
           </button>
         </div>
       </div>
@@ -630,6 +634,7 @@ export default function EhComments({ sourceUrl, ehEnabled, ehCookie, ehWorker, e
               排序: {ehSortMethod === 'time' ? '时间' : '分数'} / {ehSortOrder === 'asc' ? '正序' : '倒序'}
               {(ehMinScore || 0) > 0 && <span style={{ marginLeft: '8px' }}>最低: {ehMinScore}分</span>}
             </span>
+            <span className="eh-comment-count" style={{ color: 'var(--text-sub)', fontVariantNumeric: 'tabular-nums' }}>{comments.length} 条</span>
           </div>
 
           <div style={{ marginBottom: '16px' }}>

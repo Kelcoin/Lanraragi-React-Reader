@@ -254,6 +254,21 @@ function renderToolbarGlyph(name) {
           <path d="M12 11.5v9M8.75 17.25 12 20.5l3.25-3.25" />
         </>
       );
+    case 'external':
+      return (
+        <>
+          <path d="M13.5 5H19v5.5" />
+          <path d="M19 5l-8 8" />
+          <path d="M10 7H6.75A1.75 1.75 0 0 0 5 8.75v8.5A1.75 1.75 0 0 0 6.75 19h8.5A1.75 1.75 0 0 0 17 17.25V14" opacity="0.82" />
+        </>
+      );
+    case 'reload':
+      return (
+        <>
+          <path d="M19 8V4.5l-2.15 2.15A7.5 7.5 0 1 0 19.2 14" />
+          <path d="M19 4.5h-3.5" opacity="0.72" />
+        </>
+      );
     case 'cover':
       return (
         <>

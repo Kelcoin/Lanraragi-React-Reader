@@ -59,3 +59,13 @@ export function getReaderArchivePanelModel(type, sources) {
     onDelete: sources.removeHistory,
   };
 }
+
+export function getReaderArchivePanelWindow(type, items, limit = 25) {
+  const source = Array.isArray(items) ? items : [];
+  const shouldLimit = type === 'history' || type === 'watchlist';
+  return {
+    items: shouldLimit ? source.slice(0, limit) : source,
+    hasMore: shouldLimit && source.length > limit,
+    total: source.length,
+  };
+}
