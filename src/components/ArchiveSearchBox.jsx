@@ -1,4 +1,4 @@
-import React, { useCallback, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import TagSuggest from './TagSuggest';
 import { replaceCurrentArchiveSearchToken } from '../lib/archiveSearch';
 import { deleteFilterPreset, readFilterPresets, saveFilterPreset } from '../lib/filterPresets';
@@ -23,6 +23,15 @@ export default function ArchiveSearchBox({ query, setQuery, placeholder }) {
     setShowPresets(false);
   }, [query]);
 
+  useEffect(() => {
+    if (!showPresets) return undefined;
+    const close = (event) => {
+      if (!searchBoxRef.current?.contains(event.target)) setShowPresets(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [showPresets]);
+
   return (
     <div className="archive-search-wrap" ref={searchBoxRef}>
       <div className="archive-search-row">
@@ -30,58 +39,67 @@ export default function ArchiveSearchBox({ query, setQuery, placeholder }) {
           <input
             className="input-glass"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              if (showPresets) setShowPresets(false);
+              setQuery(event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !suggestActiveRef.current) event.currentTarget.blur();
+              if (event.key === 'Escape') setShowPresets(false);
             }}
             placeholder={placeholder}
-            style={{ padding: '10px 38px 10px 12px', fontSize: '14px', width: '100%', boxSizing: 'border-box' }}
+            style={{ padding: `10px ${query ? 66 : 38}px 10px 12px`, fontSize: '14px', width: '100%', boxSizing: 'border-box' }}
           />
           {query && (
             <button
               type="button"
               className="input-clear-btn"
               onClick={() => setQuery('')}
-              style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)' }}
+              style={{ position: 'absolute', right: '36px', top: 0, bottom: 0, display: 'flex', alignItems: 'center' }}
               aria-label="清空搜索"
             >
-              ×
+              ✕
             </button>
           )}
-          <TagSuggest inputValue={query} onSelectTag={handleTagSelect} containerRef={searchBoxRef} onSetActive={(active) => { suggestActiveRef.current = active; }} />
-        </div>
-        <button
-          type="button"
-          className="btn archive-search-menu-button"
-          onClick={() => setShowPresets(v => !v)}
-          aria-expanded={showPresets}
-          aria-controls={presetMenuId}
-          aria-label={showPresets ? '收起筛选方案' : '展开筛选方案'}
-        >
-          <span className="archive-search-menu-label">筛选方案</span>
-          <svg className="archive-search-chevron" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
-            <path d="M3.5 6l4.5 4 4.5-4z" />
-          </svg>
-        </button>
-      </div>
-      {showPresets && (
-        <div className="archive-search-presets dropdown-animate" id={presetMenuId}>
-          <div className="archive-search-preset-actions">
-            <button type="button" className="btn" onClick={savePreset}>保存当前方案</button>
-            <button type="button" className="btn" onClick={() => { setQuery(''); setShowPresets(false); }}>清空筛选</button>
-          </div>
-          {presets.length > 0 ? presets.map(preset => (
-            <div key={preset.name} className="archive-search-preset-row">
-              <button type="button" onClick={() => { setQuery(preset.query || ''); setShowPresets(false); }} title={preset.query || preset.name}>
-                {preset.name}
-              </button>
-              <button type="button" aria-label={`删除 ${preset.name}`} onClick={() => setPresets(deleteFilterPreset(preset.name))}>×</button>
+          <button
+            type="button"
+            className="input-clear-btn archive-search-preset-toggle"
+            onClick={() => {
+              suggestActiveRef.current = false;
+              setShowPresets(v => !v);
+            }}
+            aria-expanded={showPresets}
+            aria-controls={presetMenuId}
+            aria-label={showPresets ? '收起筛选预设' : '展开筛选预设'}
+          >
+            <svg className="archive-search-chevron" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+              <path d="M6 9l6 6 6-6z" />
+            </svg>
+          </button>
+          {!showPresets && <TagSuggest inputValue={query} onSelectTag={handleTagSelect} containerRef={searchBoxRef} onSetActive={(active) => { suggestActiveRef.current = active; }} />}
+          {showPresets && (
+            <div className="archive-search-presets dropdown-animate" id={presetMenuId}>
+              <div className="archive-search-preset-heading">
+                <span>已保存的筛选方案</span>
+                <button type="button" className="btn" onClick={savePreset}>+ 保存当前筛选</button>
+              </div>
+              {presets.length > 0 ? <div className="archive-search-preset-list">{presets.map(preset => (
+                <div key={preset.name} className="archive-search-preset-row">
+                  <button type="button" onClick={() => { setQuery(preset.query || ''); setShowPresets(false); }} title={preset.query || preset.name}>
+                    {preset.name}
+                  </button>
+                  <button type="button" aria-label={`删除 ${preset.name}`} onClick={() => setPresets(deleteFilterPreset(preset.name))}>✕</button>
+                </div>
+              ))}</div> : (
+                <div className="archive-search-empty">暂无预设。设置筛选条件后点击「保存当前筛选」。</div>
+              )}
             </div>
-          )) : (
-            <div className="archive-search-empty">暂无筛选方案</div>
           )}
         </div>
-      )}
+        <button type="button" className="btn archive-search-submit" onClick={() => searchBoxRef.current?.querySelector('input')?.blur()}>
+          筛选
+        </button>
+      </div>
     </div>
   );
 }

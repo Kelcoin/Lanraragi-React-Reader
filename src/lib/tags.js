@@ -575,6 +575,23 @@ function buildSearchIndex() {
 
 export const isDBReady = () => translationDB !== null && searchIndex !== null;
 
+const SUGGESTION_NAMESPACE_PRIORITY = {
+  parody: 1,
+  artist: 2,
+  group: 3,
+};
+
+export const compareTagSuggestions = (a, b) => {
+  const scoreDifference = b.score - a.score;
+  if (scoreDifference !== 0) return scoreDifference;
+
+  const namespaceDifference = (SUGGESTION_NAMESPACE_PRIORITY[a.ns] || 0)
+    - (SUGGESTION_NAMESPACE_PRIORITY[b.ns] || 0);
+  if (namespaceDifference !== 0) return namespaceDifference;
+
+  return `${a.label || ''}\u0000${a.key || ''}`.localeCompare(`${b.label || ''}\u0000${b.key || ''}`);
+};
+
 export const searchTags = (query) => {
   if (!searchIndex || !query) return [];
   const raw = query.toLowerCase().trim();
@@ -598,7 +615,7 @@ export const searchTags = (query) => {
     if (score > 0) results.push({ ...item, score });
   }
 
-  results.sort((a, b) => b.score - a.score);
+  results.sort(compareTagSuggestions);
   return results.slice(0, 50);
 };
 
