@@ -748,7 +748,7 @@ textarea:focus-visible,
   background: rgba(7, 10, 15, 0.5);
   border: 1px solid var(--glass-border-hover);
   box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
-  transition: gap 0.24s ease, background 0.2s ease, border-color 0.2s ease;
+  transition: gap 0.24s ease, padding 0.24s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .metadata-tags-box > .btn {
@@ -791,6 +791,28 @@ textarea:focus-visible,
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.metadata-tags-box:has(.metadata-tag.is-revealed) {
+  padding-inline: 4px;
+  gap: 3px;
+}
+
+.metadata-tags-box:has(.metadata-tag.is-revealed) > .metadata-tag {
+  min-width: min(56px, 100%);
+  padding-inline: 8px;
+  gap: 3px;
+}
+
+.metadata-tags-box:has(.metadata-tag.is-revealed) > .metadata-tag:not(.is-revealed) {
+  flex-basis: var(--metadata-tag-compressed-width);
+  width: var(--metadata-tag-compressed-width);
+}
+
+.metadata-tags-box:has(.metadata-tag.is-revealed) > .metadata-tag.is-revealed {
+  flex-basis: min(var(--metadata-tag-preferred-width), calc(100% - 8px));
+  width: min(var(--metadata-tag-preferred-width), calc(100% - 8px));
+  max-width: calc(100% - 8px);
 }
 
 .metadata-tag-labels {
@@ -888,6 +910,13 @@ textarea:focus-visible,
 
 :root[data-theme="light"] .metadata-tags-box > .metadata-tag.is-revealed {
   background: color-mix(in srgb, var(--accent) 10%, white);
+  color: var(--text-main);
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .metadata-tags-box > .metadata-tag.is-revealed:hover:not(:disabled),
+:root[data-theme="light"] .metadata-tags-box > .metadata-tag.is-revealed .metadata-tag-copy {
+  color: var(--text-main);
 }
 
 .archive-card-progress {
