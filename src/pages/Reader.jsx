@@ -3091,7 +3091,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               if (grouped.length === 0) return <div style={{ color: 'var(--text-sub)', fontSize: '12px' }}>无标签</div>;
               return grouped.map((group) => (
                 <div key={group.ns} style={{ marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '3px', alignItems: 'baseline' }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '3px', alignItems: 'center' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, color: group.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginRight: '5px', lineHeight: '20px', whiteSpace: 'nowrap' }}>
                       <NamespaceGlyph ns={group.ns} size={14} color={group.color} />
                       {stripDecoratedLabel(group.label)}
@@ -3117,7 +3117,8 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                           }
                         }}
                         style={{
-                          display: 'inline-block',
+                          display: 'inline-flex',
+                          alignItems: 'center',
                           padding: '2px 6px',
                           borderRadius: '5px',
                           background: `${group.color}18`,

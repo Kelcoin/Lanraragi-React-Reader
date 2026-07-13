@@ -1552,13 +1552,13 @@ textarea:focus-visible,
 :root { --watchlist-glow: #9c7cff; }
 :root[data-theme="light"] { --watchlist-glow: #e38a1f; }
 
-.watchlist-card:not(.watchlist-card-plain)::before {
+.watchlist-card:not(.watchlist-card-plain) .archive-card-shell::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
-  border-radius: 15px;
+  border-radius: inherit;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 48%, transparent),
     0 0 14px color-mix(in srgb, var(--watchlist-glow) 42%, transparent),
@@ -1566,7 +1566,7 @@ textarea:focus-visible,
   opacity: 0.96;
 }
 
-:root[data-theme="light"] .watchlist-card:not(.watchlist-card-plain)::before {
+:root[data-theme="light"] .watchlist-card:not(.watchlist-card-plain) .archive-card-shell::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 62%, transparent),
     0 0 16px color-mix(in srgb, var(--watchlist-glow) 56%, transparent),
@@ -1574,7 +1574,7 @@ textarea:focus-visible,
   opacity: 1;
 }
 
-.watchlist-card:not(.watchlist-card-plain):hover::before {
+.watchlist-card:not(.watchlist-card-plain):hover .archive-card-shell::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 64%, transparent),
     0 0 18px color-mix(in srgb, var(--watchlist-glow) 52%, transparent),
@@ -1582,7 +1582,7 @@ textarea:focus-visible,
   opacity: 1;
 }
 
-:root[data-theme="light"] .watchlist-card:not(.watchlist-card-plain):hover::before {
+:root[data-theme="light"] .watchlist-card:not(.watchlist-card-plain):hover .archive-card-shell::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 72%, transparent),
     0 0 20px color-mix(in srgb, var(--watchlist-glow) 64%, transparent),

@@ -720,7 +720,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
 
             {categorizedTags.map((group) => (
               <div key={group.ns} style={{ marginBottom: '8px' }}>
-                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '3px', alignItems: 'baseline' }}>
+                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '3px', alignItems: 'center' }}>
                   <span
                     className="archive-tag-namespace"
                     style={{
@@ -747,6 +747,8 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
                       type="button"
                       onClick={(e) => handleTagClick(e, raw)}
                       style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         border: `1px solid ${group.color}44`,
                         borderRadius: '5px',
                         padding: '2px 6px',
