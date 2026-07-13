@@ -14,6 +14,7 @@ import { getWorkerUrl, setWorkerUrl, getSyncToken, setSyncToken, exportConfig, i
 import { applyThemeMode, getNextThemeMode, readStoredThemeMode, watchSystemTheme, writeStoredThemeMode } from './lib/theme';
 import PwaStatus from './components/PwaStatus';
 import AppVersion from './components/AppVersion';
+import ConfigTransferDialog from './components/ConfigTransferDialog';
 import { cacheServerInfo } from './lib/serverInfoCache';
 import './index.css';
 
@@ -37,8 +38,9 @@ export default function App() {
     syncToken: getSyncToken(),
   });
 
-  const [loginError, setLoginError] = useState('');
+  const [loginNotice, setLoginNotice] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [configTransfer, setConfigTransfer] = useState(null);
   
   useEffect(() => {
     const run = () => loadTagDB();
@@ -90,7 +92,7 @@ export default function App() {
 
   const handleConnect = async (e) => {
     e.preventDefault();
-    setLoginError('');
+    setLoginNotice(null);
     setLoginLoading(true);
     try {
       const serverInfo = await checkServerStatus(tempConfig.url, tempConfig.key);
@@ -101,7 +103,7 @@ export default function App() {
       setSyncToken(tempConfig.syncToken);
       setSavedConfig({ url: tempConfig.url, key: tempConfig.key });
     } catch (err) {
-      setLoginError(err.message || '无法连接到服务器，请检查地址和 API Key 是否正确，以及 LRR 服务是否在运行');
+      setLoginNotice({ type: 'error', text: err.message || '无法连接到服务器，请检查地址和 API Key 是否正确，以及 LRR 服务是否在运行' });
     } finally {
       setLoginLoading(false);
     }
@@ -114,34 +116,29 @@ export default function App() {
       lrr_worker_url: tempConfig.workerUrl,
       lrr_sync_token: tempConfig.syncToken,
     });
-    navigator.clipboard.writeText(encoded).then(() => {
-      alert('配置已复制到剪贴板。在其他设备粘贴导入即可。');
-    }).catch(() => {
-      prompt('复制以下文本到其他设备导入:', encoded);
-    });
+    setConfigTransfer({ mode: 'export', value: encoded });
   };
 
   const handleImportConfig = async () => {
     let encoded = '';
     try { encoded = await navigator.clipboard.readText(); } catch {}
-    if (!encoded) encoded = prompt('粘贴从其他设备导出的配置文本:') || '';
-    if (!encoded) return;
-    try {
-      const count = importConfig(encoded);
-      const next = {
-        url: localStorage.getItem('lrr_server_url') || '',
-        key: localStorage.getItem('lrr_api_key') || '',
-        workerUrl: getWorkerUrl(),
-        syncToken: getSyncToken(),
-      };
-      setTempConfig(next);
-      const nextThemeMode = readStoredThemeMode();
-      applyThemeMode(nextThemeMode);
-      setThemeMode(nextThemeMode);
-      alert(`已导入 ${count} 项配置`);
-    } catch (err) {
-      setLoginError(err.message || '导入失败');
-    }
+    setConfigTransfer({ mode: 'import', value: encoded });
+  };
+
+  const handleConfirmImportConfig = async (encoded) => {
+    const count = importConfig(encoded);
+    const next = {
+      url: localStorage.getItem('lrr_server_url') || '',
+      key: localStorage.getItem('lrr_api_key') || '',
+      workerUrl: getWorkerUrl(),
+      syncToken: getSyncToken(),
+    };
+    setTempConfig(next);
+    const nextThemeMode = readStoredThemeMode();
+    applyThemeMode(nextThemeMode);
+    setThemeMode(nextThemeMode);
+    setConfigTransfer(null);
+    setLoginNotice({ type: 'success', text: `已导入 ${count} 项配置` });
   };
 
   if (!savedConfig.url || !savedConfig.key) {
@@ -195,13 +192,9 @@ export default function App() {
               {loginLoading ? '正在验证连接…' : '开始阅读'}
             </button>
 
-            {loginError && (
-              <div style={{
-                background: 'rgba(244,67,54,0.12)', border: '1px solid rgba(244,67,54,0.3)',
-                borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#f44336',
-                lineHeight: 1.5
-              }}>
-                {loginError}
+            {loginNotice && (
+              <div className={`login-notice is-${loginNotice.type}`} role={loginNotice.type === 'error' ? 'alert' : 'status'}>
+                {loginNotice.text}
               </div>
             )}
           </form>
@@ -209,6 +202,13 @@ export default function App() {
           </div>
         </div>
         <PwaStatus />
+        <ConfigTransferDialog
+          open={!!configTransfer}
+          mode={configTransfer?.mode}
+          initialValue={configTransfer?.value}
+          onCancel={() => setConfigTransfer(null)}
+          onConfirm={handleConfirmImportConfig}
+        />
       </>
     );
   }

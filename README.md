@@ -1,6 +1,6 @@
-# Lanraragi React Reader
+# LANraragi-React-Reader
 
-Lanraragi React Reader 是一个面向 [LANraragi](https://github.com/Difegue/LANraragi) 的现代阅读器前端，支持 PWA、标签翻译、分类浏览、阅读历史、智能推荐、归档上传、元数据编辑、E-Hentai 评论、重复归档检测和沉浸式阅读。
+LANraragi-React-Reader 是一个面向 [LANraragi](https://github.com/Difegue/LANraragi) 的现代阅读器前端，支持 PWA、标签翻译、分类浏览、阅读历史、智能推荐、归档上传、元数据编辑、E-Hentai 评论、重复归档检测和沉浸式阅读。
 
 应用通过 LANraragi HTTP API 工作：首次打开页面时填写 LANraragi 地址和 API Key，之后配置保存在浏览器 `localStorage`。API 请求会发送到 `<LANraragi 地址>/api/*`，认证方式为 `Authorization: Bearer <base64(API Key)>`。
 

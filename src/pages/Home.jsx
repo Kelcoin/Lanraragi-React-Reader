@@ -1752,7 +1752,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       <div className="home-topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', marginBottom: '32px', flexWrap: 'wrap' }}>
         <div className="home-brand">
           <h1 className="home-brand-title" translate="no" style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span className="home-project-name">Lanraragi React Reader</span>
+            <span className="home-project-name">LANraragi-React-Reader</span>
             {serverOnline !== null && (
               <button
                 type="button"

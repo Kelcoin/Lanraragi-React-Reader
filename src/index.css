@@ -709,6 +709,25 @@ textarea:focus-visible,
   letter-spacing: 0;
 }
 
+.login-notice {
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-notice.is-error {
+  background: rgba(244, 67, 54, 0.12);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  color: #f44336;
+}
+
+.login-notice.is-success {
+  background: rgba(75, 181, 112, 0.12);
+  border: 1px solid rgba(75, 181, 112, 0.3);
+  color: #62d48b;
+}
+
 .field-label {
   display: block;
   font-size: 12px;
@@ -1152,6 +1171,41 @@ textarea:focus-visible,
   color: var(--text-sub);
   font-size: 13px;
   line-height: 1.7;
+}
+
+.config-transfer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.config-transfer-field textarea {
+  width: 100%;
+  min-height: 168px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.config-transfer-copy {
+  align-self: flex-start;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.config-transfer-error {
+  padding: 10px 12px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--danger-surface);
+  color: var(--danger-text);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .confirm-dialog-actions {

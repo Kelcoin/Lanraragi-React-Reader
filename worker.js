@@ -11,8 +11,8 @@ const CORS = {
 
 const DEDUPE_NON_DUP_KEY = 'dedupe:non-duplicates';
 const SYNC_SCHEMA_VERSION = 2;
-const PROJECT_NAME = 'LANraragi React Reader';
-const PROJECT_URL = 'https://github.com/Kelcoin/Lanraragi-React-Reader';
+const PROJECT_NAME = 'LANraragi-React-Reader';
+const PROJECT_URL = 'https://github.com/Kelcoin/LANraragi-React-Reader';
 const FALLBACK_APP_VERSION = 'v1.1.0+944d658';
 
 function json(data, status = 200) {
