@@ -23,7 +23,7 @@ export default function CacheSettings() {
   return <div className="settings-section">
     <div className="settings-section-title">图片缓存</div>
     <label className="settings-row">
-      <SettingHint text="自动模式会使用浏览器可用空间的一小部分；达到上限时会自动优先清理较旧图片。">最大缓存容量</SettingHint>
+      <SettingHint text={'自动：按浏览器可用空间计算安全上限。\n手动：使用你指定的容量。\n达到上限后会优先清理较旧图片。'}>最大缓存容量</SettingHint>
       <div style={{ width: 128, pointerEvents: busy ? 'none' : 'auto', opacity: busy ? 0.6 : 1 }}>
         <CustomSelect value={stats?.mode || 'auto'} options={options} onChange={(value) => run(() => setImageCacheLimit(value))} compact />
       </div>

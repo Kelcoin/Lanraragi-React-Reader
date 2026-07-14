@@ -94,25 +94,6 @@ async function resolvePageImageSource(pageUrl, { cacheOnly = false, allowNetwork
   });
 }
 
-async function ensureImageDecoded(src) {
-  if (!src) return false;
-  const probe = new Image();
-  probe.decoding = 'async';
-  probe.src = src;
-  if (!probe.complete) {
-    await new Promise((resolve, reject) => {
-      probe.onload = () => resolve();
-      probe.onerror = reject;
-    });
-  }
-  if (typeof probe.decode === 'function') {
-    try {
-      await probe.decode();
-    } catch {}
-  }
-  return true;
-}
-
 // ===== Thumbnail concurrency pool (max 2 simultaneous fetches) =====
 const thumbPending = [];
 let thumbActive = 0;
@@ -121,6 +102,7 @@ const DRAWER_COLUMNS = 3;
 const DRAWER_GAP = 12;
 const DRAWER_OVERSCAN_ROWS = 4;
 const DRAWER_ITEM_RATIO = 1.3;
+const MAX_ADJACENT_DECODE_PIXELS = 24_000_000;
 function getDrawerItemWidth(gridWidth) {
   return gridWidth > 0
     ? Math.max(72, (gridWidth - (DRAWER_COLUMNS - 1) * DRAWER_GAP) / DRAWER_COLUMNS)
@@ -196,7 +178,7 @@ const DrawerThumb = ({ archiveId, pageIndex, active, cacheOnly = false, eager = 
       const page = pageIndex + 1;
       const thumbKey = `thumb:drawer:v3:${archiveId}:${page}`;
       try {
-        setThumbState('loading');
+        setThumbState((state) => state === 'queued' ? state : 'loading');
         let blobUrl = cacheOnly && !allowNetworkFallback
           ? await getCachedImage(thumbKey)
           : await getCachedImage(thumbKey);
@@ -320,6 +302,7 @@ const PageImage = React.forwardRef(({
     let isMounted = true;
     const requestSeq = ++requestSeqRef.current;
     setLoadState(pageUrl ? 'loading' : 'idle');
+    setImgSrc(null);
 
     (async () => {
       if (!pageUrl) return;
@@ -329,12 +312,7 @@ const PageImage = React.forwardRef(({
         const src = await resolvePageImageSource(pageUrl, { cacheOnly, allowNetworkFallback });
         if (!isMounted || requestSeq !== requestSeqRef.current) return;
         if (src) {
-          const decoded = new Image(); decoded.src = src; await decoded.decode?.().catch(() => {});
-          if (!isMounted || requestSeq !== requestSeqRef.current) return;
-          setNaturalSize({ width: decoded.naturalWidth, height: decoded.naturalHeight });
           setImgSrc(src);
-          setLoadState('ready');
-          onReady?.(pageIndex);
           return;
         }
         if (cacheOnly && !allowNetworkFallback) {
@@ -357,22 +335,54 @@ const PageImage = React.forwardRef(({
     return () => { isMounted = false; };
   }, [allowNetworkFallback, cacheOnly, onError, onLoadStart, onReady, pageIndex, pageUrl]);
 
-  if (!imgSrc) {
+  const handleMountedImageLoad = useCallback(async (event) => {
+    const image = event.currentTarget;
+    if (typeof image.decode === 'function') {
+      try { await image.decode(); } catch {}
+    }
+    if (image !== imgRef.current || image.src !== imgSrc) return;
+    setNaturalSize({ width: image.naturalWidth, height: image.naturalHeight });
+    if (cropBorders) {
+      try { setCropInsets(detectImageBorderInsets(image)); } catch {}
+    }
+    setLoadState('ready');
+    onReady?.(pageIndex);
+  }, [cropBorders, imgSrc, onReady, pageIndex]);
+
+  const handleMountedImageError = useCallback(() => {
+    setLoadState('error');
+    onError?.(pageIndex);
+  }, [onError, pageIndex]);
+
+  if (!imgSrc || loadState !== 'ready') {
     return (
       <div
-        className="reader-shell-pulse reader-skeleton-fade reader-skeleton-surface"
+        className="reader-image-loading-status"
+        role="status" aria-live="polite"
         style={{
+          ...style,
           width: '100%',
           height: '100%',
           minHeight: 0,
-          borderRadius: '8px',
-          background: 'var(--reader-skeleton-base)',
-          border: '1px solid var(--reader-control-border)',
+          borderRadius: style?.borderRadius || '8px',
+          background: isImmersive ? '#000' : 'transparent',
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        <div className="shimmer-strip" style={{ position: 'absolute', inset: 0 }} />
+        {imgSrc && (
+          <img
+            ref={setRefs}
+            src={imgSrc}
+            alt=""
+            draggable={false}
+            decoding="async"
+            fetchpriority="high"
+            onLoad={handleMountedImageLoad}
+            onError={handleMountedImageError}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0, pointerEvents: 'none' }}
+          />
+        )}
         <div
           style={{
             position: 'absolute',
@@ -381,19 +391,19 @@ const PageImage = React.forwardRef(({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '8px',
+            gap: '16px',
             padding: '18px',
             textAlign: 'center',
             pointerEvents: 'none',
             color: loadState === 'error' ? 'var(--danger)' : 'var(--text-main)',
           }}
         >
-          <div style={{ fontSize: '14px', fontWeight: 700, letterSpacing: '0.3px' }}>
+          <div style={{ fontSize: 'clamp(24px, 4vw, 40px)', fontWeight: 800, letterSpacing: '0.5px', textWrap: 'balance' }}>
             {loadState === 'error'
               ? (errorLabel || '图片加载失败')
-              : (loadingLabel || '正在加载图像')}
+              : (loadingLabel || '正在加载图像…')}
           </div>
-          <div style={{ fontSize: '12px', color: loadState === 'error' ? 'rgba(255,180,180,0.84)' : 'rgba(223,231,245,0.68)' }}>
+          <div style={{ fontSize: 'clamp(16px, 2.6vw, 26px)', fontWeight: 600, color: loadState === 'error' ? 'rgba(255,180,180,0.84)' : 'var(--text-sub)' }}>
             {loadState === 'error'
               ? '保留当前画面，稍后可再次翻页重试'
               : (loadingHint || '图像就绪后会立即显示')}
@@ -432,7 +442,6 @@ const PageImage = React.forwardRef(({
       loading="eager"
       fetchpriority="high"
       decoding="async"
-      onLoad={(event) => { if (cropBorders) { try { setCropInsets(detectImageBorderInsets(event.currentTarget)); } catch {} } }}
       onContextMenu={(e) => isImmersive && e.preventDefault()}
     />
   );
@@ -1031,7 +1040,6 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     targetIndex: typeof readerSnapshot?.currentIndex === 'number' && readerSnapshot.currentIndex >= 0
       ? readerSnapshot.currentIndex
       : 0,
-    progress: 0,
     shownAt: 0,
   }));
   const [loadingUiArmed, setLoadingUiArmed] = useState(false);
@@ -1216,7 +1224,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
   useEffect(() => {
     if (pages.length === 0) {
-      setPageLoadPhase({ status: 'idle', visibleIndex: 0, targetIndex: 0, progress: 0, shownAt: 0 });
+      setPageLoadPhase({ status: 'idle', visibleIndex: 0, targetIndex: 0, shownAt: 0 });
       return;
     }
     setPageLoadPhase((prev) => {
@@ -1229,7 +1237,6 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         status: targetChanged && targetIndex !== visibleIndex ? 'loading' : prev.status,
         visibleIndex,
         targetIndex,
-        progress: targetChanged && targetIndex !== visibleIndex ? 0.08 : prev.progress,
         shownAt: targetChanged && targetIndex !== visibleIndex ? Date.now() : prev.shownAt,
       };
     });
@@ -1362,9 +1369,12 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   }, [archiveId, enqueueLrrProgressSync, pages.length, serverTracksProgress]);
 
   // ===== Zoom refs =====
-  const zoomScaleRef = useRef(1.0);
+  const zoomScaleRef = useRef(zoomScale);
   const isZoomingRef = useRef(false);
   const zoomWrapperRef = useRef(null);
+  const zoomTransformFrameRef = useRef(null);
+  const zoomTransformAnimatedRef = useRef(false);
+  const wheelZoomCommitTimerRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastTapPosRef = useRef({ x: 0, y: 0 });
   const singleTapTimerRef = useRef(null);
@@ -1374,7 +1384,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const lastTouchTimeRef = useRef(0);
 
   // ===== Pan refs =====
-  const panRef = useRef({ x: 0, y: 0, startX: 0, startY: 0, originX: 0, originY: 0 });
+  const panRef = useRef({ x: panX, y: panY, startX: 0, startY: 0, originX: panX, originY: panY });
   const isPanningRef = useRef(false);
 
   const getImmersiveTopTriggerHeight = useCallback(() => {
@@ -1387,7 +1397,26 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     headerTimerRef.current = setTimeout(() => setShowHeader(false), 2600);
   }, []);
 
-  const applyZoomAtPoint = useCallback((nextScale, focalX = window.innerWidth / 2, focalY = window.innerHeight / 2) => {
+  const scheduleZoomTransform = useCallback((animated = false) => {
+    zoomTransformAnimatedRef.current = animated;
+    if (zoomTransformFrameRef.current) return;
+    zoomTransformFrameRef.current = requestAnimationFrame(() => {
+      zoomTransformFrameRef.current = null;
+      const wrapper = zoomWrapperRef.current;
+      if (!wrapper) return;
+      wrapper.style.transition = zoomTransformAnimatedRef.current ? 'transform 0.15s ease-out' : 'none';
+      wrapper.style.transform = `translate3d(${panRef.current.x}px, ${panRef.current.y}px, 0) scale(${zoomScaleRef.current})`;
+    });
+  }, []);
+
+  const commitZoomTransform = useCallback((animated = false) => {
+    scheduleZoomTransform(animated);
+    setPanX(panRef.current.x);
+    setPanY(panRef.current.y);
+    setZoomScale(zoomScaleRef.current);
+  }, [scheduleZoomTransform]);
+
+  const applyZoomAtPoint = useCallback((nextScale, focalX = window.innerWidth / 2, focalY = window.innerHeight / 2, commit = true) => {
     const prevScale = zoomScaleRef.current || 1;
     let scale = Math.max(1, Math.min(5, nextScale));
 
@@ -1395,9 +1424,8 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       scale = 1;
       panRef.current = { x: 0, y: 0, startX: 0, startY: 0, originX: 0, originY: 0 };
       zoomScaleRef.current = scale;
-      setPanX(0);
-      setPanY(0);
-      setZoomScale(scale);
+      if (commit) commitZoomTransform(true);
+      else scheduleZoomTransform();
       return scale;
     }
 
@@ -1413,10 +1441,14 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
     panRef.current = { ...panRef.current, x: nextX, y: nextY };
     zoomScaleRef.current = scale;
-    setPanX(nextX);
-    setPanY(nextY);
-    setZoomScale(scale);
+    if (commit) commitZoomTransform(true);
+    else scheduleZoomTransform();
     return scale;
+  }, [commitZoomTransform, scheduleZoomTransform]);
+
+  useEffect(() => () => {
+    if (zoomTransformFrameRef.current) cancelAnimationFrame(zoomTransformFrameRef.current);
+    if (wheelZoomCommitTimerRef.current) clearTimeout(wheelZoomCommitTimerRef.current);
   }, []);
 
   // ===== Refs =====
@@ -1459,13 +1491,22 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               return res.blob();
             });
         if (!alive || loadSeq !== immersiveLoadSeqRef.current) return false;
-        if (src) {
-          await ensureImageDecoded(src);
-        }
         if (!alive || loadSeq !== immersiveLoadSeqRef.current || !imgRef.current) return false;
         if (src) {
-          imgRef.current.style.display = '';
-          imgRef.current.src = src;
+          const image = imgRef.current;
+          image.style.display = 'none';
+          image.src = src;
+          if (typeof image.decode === 'function') {
+            try { await image.decode(); } catch {}
+          } else if (!image.complete) {
+            await new Promise((resolve, reject) => {
+              image.onload = resolve;
+              image.onerror = reject;
+            });
+          }
+          if (!alive || loadSeq !== immersiveLoadSeqRef.current || image !== imgRef.current) return false;
+          if (!image.naturalWidth || !image.naturalHeight) throw new Error('Image decode failed');
+          image.style.display = '';
         } else {
           imgRef.current.src = '';
           imgRef.current.style.display = 'none';
@@ -1482,7 +1523,11 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       }
     };
 
-    loadImg(imgCurrRef, pages[idx]).then((ok) => {
+    unloadImg(imgLeftRef);
+    unloadImg(imgRightRef);
+
+    (async () => {
+      const ok = await loadImg(imgCurrRef, pages[idx]);
       if (!alive || loadSeq !== immersiveLoadSeqRef.current) return;
       if (currentIndexRef.current !== idx) return;
       if (ok) {
@@ -1491,24 +1536,36 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         setPageLoadPhase((prev) => (
           idx !== prev.targetIndex
             ? prev
-            : { status: 'ready', visibleIndex: idx, targetIndex: idx, progress: 1, shownAt: prev.shownAt }
+            : { status: 'ready', visibleIndex: idx, targetIndex: idx, shownAt: prev.shownAt }
         ));
       } else {
         setPageLoadPhase((prev) => (
           idx !== prev.targetIndex
             ? prev
-            : { ...prev, status: 'error', progress: 1 }
+            : { ...prev, status: 'error' }
         ));
       }
-    });
+      if (!ok) {
+        unloadImg(imgLeftRef);
+        unloadImg(imgRightRef);
+        return;
+      }
 
-    const l2r = settings.direction === 'ltr';
-    const prevIdx = l2r ? idx - 1 : idx + 1;
-    const nextIdx = l2r ? idx + 1 : idx - 1;
-    if (prevIdx >= 0 && prevIdx < pages.length) void loadImg(imgLeftRef, pages[prevIdx]);
-    else unloadImg(imgLeftRef);
-    if (nextIdx >= 0 && nextIdx < pages.length) void loadImg(imgRightRef, pages[nextIdx]);
-    else unloadImg(imgRightRef);
+      const currentImage = imgCurrRef.current;
+      const currentPixels = (currentImage?.naturalWidth || 0) * (currentImage?.naturalHeight || 0);
+      if (currentPixels <= MAX_ADJACENT_DECODE_PIXELS) {
+        const l2r = settings.direction === 'ltr';
+        const prevIdx = l2r ? idx - 1 : idx + 1;
+        const nextIdx = l2r ? idx + 1 : idx - 1;
+        if (prevIdx >= 0 && prevIdx < pages.length) void loadImg(imgLeftRef, pages[prevIdx]);
+        else unloadImg(imgLeftRef);
+        if (nextIdx >= 0 && nextIdx < pages.length) void loadImg(imgRightRef, pages[nextIdx]);
+        else unloadImg(imgRightRef);
+      } else {
+        unloadImg(imgLeftRef);
+        unloadImg(imgRightRef);
+      }
+    })();
     return () => {
       alive = false;
     };
@@ -1732,14 +1789,18 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
           status: 'loading',
           visibleIndex: restoredIndex,
           targetIndex: restoredIndex,
-          progress: 0.08,
           shownAt: Date.now(),
         });
         setViewMode(readerSnapshot.viewMode || 'normal');
         setShowHeader(readerSnapshot.showHeader ?? true);
-        setZoomScale(readerSnapshot.zoomScale || 1.0);
-        setPanX(readerSnapshot.panX || 0);
-        setPanY(readerSnapshot.panY || 0);
+        const restoredZoom = readerSnapshot.zoomScale || 1.0;
+        const restoredPanX = readerSnapshot.panX || 0;
+        const restoredPanY = readerSnapshot.panY || 0;
+        zoomScaleRef.current = restoredZoom;
+        panRef.current = { x: restoredPanX, y: restoredPanY, startX: 0, startY: 0, originX: restoredPanX, originY: restoredPanY };
+        setZoomScale(restoredZoom);
+        setPanX(restoredPanX);
+        setPanY(restoredPanY);
         setLoading(false);
         setLoadingPages(false);
         setReaderReady(true);
@@ -1792,11 +1853,11 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
           setCurrentIndex(savedProgress - 1);
           setDisplayedIndex(savedProgress - 1);
           setLoadingUiArmed(false);
-          setPageLoadPhase({ status: 'loading', visibleIndex: savedProgress - 1, targetIndex: savedProgress - 1, progress: 0.08, shownAt: Date.now() });
+          setPageLoadPhase({ status: 'loading', visibleIndex: savedProgress - 1, targetIndex: savedProgress - 1, shownAt: Date.now() });
         } else {
           setDisplayedIndex(0);
           setLoadingUiArmed(false);
-          setPageLoadPhase({ status: extractedPages.length > 0 ? 'loading' : 'idle', visibleIndex: 0, targetIndex: 0, progress: extractedPages.length > 0 ? 0.08 : 0, shownAt: extractedPages.length > 0 ? Date.now() : 0 });
+          setPageLoadPhase({ status: extractedPages.length > 0 ? 'loading' : 'idle', visibleIndex: 0, targetIndex: 0, shownAt: extractedPages.length > 0 ? Date.now() : 0 });
         }
       } catch (e) {
         if (!cancelled) {
@@ -1925,7 +1986,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         if (scale < 0.95) scale = 0.95;
         const cx = (touches[0].clientX + touches[1].clientX) / 2;
         const cy = (touches[0].clientY + touches[1].clientY) / 2;
-        applyZoomAtPoint(scale, cx, cy);
+        applyZoomAtPoint(scale, cx, cy, false);
       }
       return;
     }
@@ -1937,8 +1998,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         const dy = moveClientY - panRef.current.startY;
         panRef.current.x = panRef.current.originX + dx;
         panRef.current.y = panRef.current.originY + dy;
-        setPanX(panRef.current.x);
-        setPanY(panRef.current.y);
+        scheduleZoomTransform();
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) swipeDidMoveRef.current = true;
       }
       return;
@@ -1984,7 +2044,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         });
       }
     }
-  }, [applyZoomAtPoint, viewMode]);
+  }, [applyZoomAtPoint, scheduleZoomTransform, viewMode]);
 
   // ===== Pointer up =====
   const handlePointerUp = useCallback(() => {
@@ -2000,6 +2060,8 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       else if (s < 1.05) target = 1.0;
       if (target !== s) {
         applyZoomAtPoint(target, pinchStartRef.current.cx || window.innerWidth / 2, pinchStartRef.current.cy || window.innerHeight / 2);
+      } else {
+        commitZoomTransform();
       }
       return;
     }
@@ -2010,8 +2072,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       const maxTy = Math.max(0, (s - 1) * window.innerHeight / 2);
       panRef.current.x = Math.max(-maxTx, Math.min(maxTx, panRef.current.x));
       panRef.current.y = Math.max(-maxTy, Math.min(maxTy, panRef.current.y));
-      setPanX(panRef.current.x);
-      setPanY(panRef.current.y);
+      commitZoomTransform(true);
       return;
     }
     if (zoomScaleRef.current !== 1.0 || !isSwipingRef.current) return;
@@ -2125,7 +2186,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
     animReset(0);
     setTimeout(resetAll, 180);
-  }, [applyZoomAtPoint, settings.direction]);
+  }, [applyZoomAtPoint, commitZoomTransform, settings.direction]);
 
   // ===== Click zones: left 45% / middle 10% / right 45% (top 12% excluded on mobile) =====
   const handleScreenClick = useCallback((e) => {
@@ -2161,12 +2222,23 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       if (s < 1) s = 1;
       if (s > 5) s = 5;
       if (Math.abs(s - zoomScaleRef.current) > 0.01) {
-        applyZoomAtPoint(s, e.clientX, e.clientY);
+        applyZoomAtPoint(s, e.clientX, e.clientY, false);
+        if (wheelZoomCommitTimerRef.current) clearTimeout(wheelZoomCommitTimerRef.current);
+        wheelZoomCommitTimerRef.current = setTimeout(() => {
+          wheelZoomCommitTimerRef.current = null;
+          commitZoomTransform();
+        }, 80);
       }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [applyZoomAtPoint, viewMode]);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (wheelZoomCommitTimerRef.current) {
+        clearTimeout(wheelZoomCommitTimerRef.current);
+        wheelZoomCommitTimerRef.current = null;
+      }
+    };
+  }, [applyZoomAtPoint, commitZoomTransform, viewMode]);
 
   const commitPageTarget = useCallback((targetIndex, { resetZoom = true, showIndicator = false, assumeVisible = false, preserveSwipePosition = false } = {}) => {
     if (pages.length === 0) return;
@@ -2175,6 +2247,10 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     setLoadingUiArmed(false);
     if (resetZoom) {
       zoomScaleRef.current = 1.0;
+      panRef.current = { x: 0, y: 0, startX: 0, startY: 0, originX: 0, originY: 0 };
+      scheduleZoomTransform();
+      setPanX(0);
+      setPanY(0);
       setZoomScale(1.0);
     }
     if (showIndicator && viewMode === 'immersive') {
@@ -2188,11 +2264,10 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       status: assumeVisible || bounded === prev.visibleIndex ? 'ready' : 'loading',
       visibleIndex: assumeVisible ? bounded : prev.visibleIndex,
       targetIndex: bounded,
-      progress: assumeVisible || bounded === prev.visibleIndex ? 1 : 0.12,
       shownAt: assumeVisible || bounded === prev.visibleIndex ? prev.shownAt : Date.now(),
     }));
     if (!preserveSwipePosition && swipeContainerRef.current) swipeContainerRef.current.style.transform = 'translateX(0px)';
-  }, [exitColdRestoreMode, pages.length, showTransientPageIndicator, viewMode]);
+  }, [exitColdRestoreMode, pages.length, scheduleZoomTransform, showTransientPageIndicator, viewMode]);
   commitPageTargetRef.current = commitPageTarget;
 
   // ===== 3. Auto turn timer =====
@@ -2241,7 +2316,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     setPageLoadPhase((prev) => (
       pageIndex !== prev.targetIndex
         ? prev
-        : { ...prev, status: 'loading', progress: Math.max(prev.progress || 0, 0.28) }
+        : { ...prev, status: 'loading' }
     ));
   }, []);
 
@@ -2252,7 +2327,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     setPageLoadPhase((prev) => (
       pageIndex !== prev.targetIndex
         ? prev
-        : { status: 'ready', visibleIndex: pageIndex, targetIndex: pageIndex, progress: 1, shownAt: prev.shownAt }
+        : { status: 'ready', visibleIndex: pageIndex, targetIndex: pageIndex, shownAt: prev.shownAt }
     ));
   }, []);
 
@@ -2261,22 +2336,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     setPageLoadPhase((prev) => (
       pageIndex !== prev.targetIndex
         ? prev
-        : { ...prev, status: 'error', progress: 1 }
+        : { ...prev, status: 'error' }
     ));
   }, []);
-
-  useEffect(() => {
-    if (pageLoadPhase.status !== 'loading') return undefined;
-    const timer = setInterval(() => {
-      setPageLoadPhase((prev) => {
-        if (prev.status !== 'loading') return prev;
-        const nextProgress = Math.min(0.9, (prev.progress || 0.12) + 0.08);
-        if (nextProgress === prev.progress) return prev;
-        return { ...prev, progress: nextProgress };
-      });
-    }, 180);
-    return () => clearInterval(timer);
-  }, [pageLoadPhase.status, pageLoadPhase.targetIndex]);
 
   useEffect(() => {
     if (
@@ -2606,10 +2668,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const normalTargetIndex = Math.max(0, Math.min(currentIndex, Math.max(pages.length - 1, 0)));
   const targetPending = pages.length > 0 && currentIndex !== displayedIndex;
   const loadingUiVisible = targetPending && pageLoadPhase.status === 'loading' && loadingUiArmed;
-  const normalPagePending = viewMode === 'normal' && loadingUiVisible;
-  const pageLoadingProgress = Math.max(0, Math.min(1, pageLoadPhase.progress || 0));
-  const immersiveManualPending = viewMode === 'immersive' && !settings.autoTurnActive && loadingUiVisible;
-  const immersiveManualError = viewMode === 'immersive' && !settings.autoTurnActive && targetPending && pageLoadPhase.status === 'error';
+  const immersivePagePending = viewMode === 'immersive' && loadingUiVisible;
   const normalDisplayIndex = normalTargetIndex;
   const pageIndicatorShouldRender = pageIndicatorVisibilityMode !== 'hidden';
   const pageIndicatorShouldShow = zoomScale === 1.0 && (
@@ -2619,7 +2678,6 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   // Keep swipe-related refs in sync (closure-free access for handlePointerMove/Up)
   currentIndexRef.current = currentIndex;
   pagesLenRef.current = pages.length;
-  zoomScaleRef.current = zoomScale;
 
   return (
     <div
@@ -2859,45 +2917,12 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 cacheOnly={assetCacheOnly}
                 style={{ ...scaleStyle, ...transformStyle, maxWidth: settings.scaleMode === 'original' ? 'none' : '100%', maxHeight: settings.scaleMode === 'original' ? 'none' : '100%', borderRadius: '8px' }} splitWide={settings.splitWidePagesEnabled} cropBorders={settings.cropBordersEnabled}
                 loadingLabel={`正在切换到第 ${normalTargetIndex + 1} 页`}
-                loadingHint={normalPagePending ? '正在请求并解码图像' : '正在准备图像'}
+                loadingHint="正在请求并解码图像"
                 errorLabel={`第 ${normalTargetIndex + 1} 页加载失败`}
                 onLoadStart={handlePageVisualLoadStart}
                 onReady={handlePageVisualReady}
                 onError={handlePageVisualError}
               />{settings.doublePageEnabled && pages[normalDisplayIndex + 1] && <PageImage pageUrl={pages[normalDisplayIndex + 1]} pageIndex={normalDisplayIndex + 1} isImmersive={false} cacheOnly={assetCacheOnly} style={{ ...scaleStyle, maxWidth: '50%', maxHeight: '100%', borderRadius: 8 }} />}</div>}
-              {normalPagePending && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: isMobile ? '14px' : '18px',
-                    right: isMobile ? '14px' : '18px',
-                    bottom: isMobile ? '14px' : '18px',
-                    padding: isMobile ? '8px 12px' : '10px 14px',
-                    borderRadius: '12px',
-                    background: 'var(--reader-panel-bg)',
-                    border: '1px solid var(--reader-control-border)',
-                    backdropFilter: 'blur(10px)',
-                    boxShadow: '0 10px 24px rgba(0,0,0,0.24)',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
-                    {`第 ${normalTargetIndex + 1} 页正在加载`}
-                  </div>
-                  <div style={{ marginTop: '8px', width: '100%', height: '4px', borderRadius: '999px', background: 'var(--reader-skeleton-base)', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${Math.round(pageLoadingProgress * 100)}%`,
-                        height: '100%',
-                        borderRadius: '999px',
-                        background: 'linear-gradient(90deg, #65c8ff 0%, #9be7ff 100%)',
-                        transition: 'width 0.18s ease',
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', padding: '20px 8px', flexShrink: 0 }}>
@@ -2951,39 +2976,33 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             {settings.autoTurnActive && (
               <div
                 ref={progressBarRef}
-                style={{ position: 'absolute', top: 0, left: 0, height: '3px', background: '#4caf50', width: '0%', zIndex: 120 }}
+                style={{ position: 'absolute', top: 0, left: 0, height: '2px', background: '#4caf50', width: '0%', zIndex: 120 }}
               />
             )}
 
-            {immersiveManualPending && (
+            {immersivePagePending && (
               <div
+                role="status" aria-live="polite"
                 style={{
                   position: 'absolute',
-                  left: isMobile ? '12px' : '18px',
-                  right: isMobile ? '12px' : '18px',
-                  bottom: isMobile ? '18px' : '22px',
+                  inset: 0,
                   zIndex: 110,
                   pointerEvents: 'none',
-                  padding: isMobile ? '8px 12px' : '10px 14px',
-                  borderRadius: '14px',
-                  background: 'rgba(8, 10, 14, 0.72)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  backdropFilter: 'blur(12px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '16px',
+                  padding: '24px',
+                  textAlign: 'center',
+                  background: '#000',
                 }}
               >
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f2f6ff' }}>
-                  {`第 ${currentIndex + 1} 页加载中`}
+                <div style={{ fontSize: 'clamp(24px, 4vw, 40px)', fontWeight: 800, color: '#f2f3f6', letterSpacing: '0.5px', textWrap: 'balance' }}>
+                  {`正在切换到第 ${currentIndex + 1} 页`}
                 </div>
-                <div style={{ marginTop: '8px', width: '100%', height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${Math.round(pageLoadingProgress * 100)}%`,
-                      height: '100%',
-                      borderRadius: '999px',
-                      background: 'linear-gradient(90deg, #72d3ff 0%, #b7f0ff 100%)',
-                      transition: 'width 0.18s ease',
-                    }}
-                  />
+                <div style={{ fontSize: 'clamp(16px, 2.6vw, 26px)', fontWeight: 600, color: 'rgba(223,225,232,0.62)' }}>
+                  正在请求并解码图像
                 </div>
               </div>
             )}
@@ -3062,9 +3081,10 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 style={{
                   width: '100%', height: '100%',
                   display: 'flex', justifyContent: 'center', alignItems: 'center',
-                  transform: `translate(${panX}px, ${panY}px) scale(${zoomScale})`,
+                  transform: `translate3d(${panX}px, ${panY}px, 0) scale(${zoomScale})`,
                   transformOrigin: 'center center',
                   transition: (isZoomingRef.current || isPanningRef.current) ? 'none' : 'transform 0.15s ease-out',
+                  willChange: zoomScale > 1 ? 'transform' : 'auto',
                 }}
               >
                 <img

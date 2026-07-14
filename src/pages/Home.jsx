@@ -2448,12 +2448,12 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           <CacheSettings />
 
           <div className="settings-row">
-            <SettingHint text="让横版或方形封面按竖向卡片比例显示，书库网格会更整齐。">裁剪封面</SettingHint>
+            <SettingHint text={'作用：将横版或方形封面裁成统一的竖向比例。\n影响：只改变书库缩略图，不修改归档原图。'}>裁剪封面</SettingHint>
             <ToggleSwitch checked={cropCover} onChange={handleToggleCropCover} label="裁剪封面" />
           </div>
 
           <label className="settings-row">
-            <SettingHint text="滚动模式会滑到底部自动加载更多；分页模式每次只显示一页档案，并用页码手动切换。">档案浏览模式</SettingHint>
+            <SettingHint text={'滚动模式：到达列表底部时自动加载更多。\n分页模式：每次显示一页归档，使用页码切换。'}>档案浏览模式</SettingHint>
             <div style={{ width: 128 }}>
               <CustomSelect
                 value={archiveBrowseMode}
@@ -2465,7 +2465,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </label>
 
           <div className="settings-row">
-            <SettingHint text="阅读历史中不显示已经读到最后一页的归档，继续阅读列表会更短。">历史记录中隐藏已读完</SettingHint>
+            <SettingHint text={'作用：隐藏已读至最后一页的归档。\n影响：只精简阅读历史列表，不会删除阅读记录。'}>历史记录中隐藏已读完</SettingHint>
             <ToggleSwitch checked={hideRead} onChange={handleToggleHideRead} label="历史记录中隐藏已读完" />
           </div>
 
@@ -2473,11 +2473,11 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             <div className="settings-section-title">E-Hentai 评论区</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <label className="settings-row">
-                <SettingHint text="在阅读器里加载来源画廊的评论，需要可访问 E-Hentai 的 Cookie。">启用 E-Hentai 评论区</SettingHint>
+                <SettingHint text={'作用：在阅读器中显示来源画廊的评论。\n条件：必须填写能访问该画廊的 E-Hentai Cookie。'}>启用 E-Hentai 评论区</SettingHint>
                 <ToggleSwitch checked={readerSettings.ehEnabled} onChange={() => updateReaderSettings((s) => ({ ...s, ehEnabled: !s.ehEnabled }))} label="启用 E-Hentai 评论区" />
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <SettingHint className="settings-field-label" text="至少需要能访问目标画廊的 Cookie；同步删除收藏夹还需要 ipb_member_id 与 ipb_pass_hash。">E-Hentai Cookie</SettingHint>
+                <SettingHint className="settings-field-label" text={'作用：访问 E-Hentai 画廊和评论。\n条件：同步删除收藏还需要 ipb_member_id 与 ipb_pass_hash。'}>E-Hentai Cookie</SettingHint>
                 <span className="secret-input-shell" data-secret={readerSettings.ehCookie || ''}>
                   <input type="text" name="e-hentai-cookie" autoComplete="off" spellCheck={false} aria-label="E-Hentai Cookie" className="input-glass secret-input"
                     value={readerSettings.ehCookie || ''}
@@ -2501,7 +2501,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                 aria-hidden={!readerSettings.ehEnabled}
               >
                   <label className="settings-row">
-                    <SettingHint text="低于这个分数的评论会被隐藏，填 0 表示不过滤。">最低展示分数</SettingHint>
+                    <SettingHint text={'作用：隐藏低于此分数的评论。\n填 0：显示全部评论，不按分数过滤。'}>最低展示分数</SettingHint>
                     <input type="text" inputMode="numeric" pattern="-?[0-9]*" className="input-glass no-spinner"
                       value={String(readerSettings.ehMinScore)}
                       onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= -999) updateReaderSettings((s) => ({ ...s, ehMinScore: n })); else if (v === '' || v === '-') updateReaderSettings((s) => ({ ...s, ehMinScore: 0 })); }}
@@ -2510,7 +2510,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                     />
                   </label>
                   <label className="settings-row">
-                    <SettingHint text="单个归档最多显示的评论数量，范围 1 到 200。">最多展示数量</SettingHint>
+                    <SettingHint text={'作用：限制每个归档加载的评论数量。\n范围：1–200 条。'}>最多展示数量</SettingHint>
                     <input type="text" inputMode="numeric" pattern="[0-9]*" className="input-glass no-spinner"
                       value={String(readerSettings.ehMaxComments)}
                       onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= 1 && n <= 200) updateReaderSettings((s) => ({ ...s, ehMaxComments: n })); }}
@@ -2519,7 +2519,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                     />
                   </label>
                   <label className="settings-row">
-                    <SettingHint text="按评论分数或发布时间排序。">排序方式</SettingHint>
+                    <SettingHint text={'按分数：根据评论评分排序。\n按时间：根据评论发布时间排序。'}>排序方式</SettingHint>
                     <div style={{ width: '110px', flexShrink: 0 }}>
                       <CustomSelect
                         value={readerSettings.ehSortMethod}
@@ -2530,7 +2530,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                     </div>
                   </label>
                   <label className="settings-row">
-                    <SettingHint text="倒序优先显示最高分或最新评论，正序则相反。">排序方向</SettingHint>
+                    <SettingHint text={'倒序：最高分或最新评论优先。\n正序：最低分或最早评论优先。'}>排序方向</SettingHint>
                     <div style={{ width: '110px', flexShrink: 0 }}>
                       <CustomSelect
                         value={readerSettings.ehSortOrder}
@@ -2545,7 +2545,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </div>
 
           <div className="settings-row">
-            <SettingHint text={ehFavoriteSyncReady ? '删除归档时同步移除 source 指向的 E-Hentai 收藏；删除弹窗里仍可单次取消。' : '需要先配置 Worker、访问 Token，以及包含 ipb_member_id / ipb_pass_hash 的 E-Hentai Cookie。'}>同步删除 E-Hentai 收藏夹</SettingHint>
+            <SettingHint text={ehFavoriteSyncReady ? '作用：删除归档时，同时移除 source 指向的 E-Hentai 收藏。\n控制：仍可在每次删除确认时单独取消同步。' : '当前不可用。\n条件：配置 Worker、访问 Token，并提供含 ipb_member_id 与 ipb_pass_hash 的 E-Hentai Cookie。'}>同步删除 E-Hentai 收藏夹</SettingHint>
             <ToggleSwitch checked={ehFavoriteDeleteSync && ehFavoriteSyncReady} onChange={handleToggleEhFavoriteDeleteSync} disabled={!ehFavoriteSyncReady} label="同步删除 E-Hentai 收藏夹" />
           </div>
 
@@ -2553,7 +2553,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             <div className="settings-section-title">Worker 设置</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <SettingHint className="settings-field-label" text="用于多设备同步阅读历史、待看和删除收藏夹等 Worker 功能。">Cloudflare Worker 端点</SettingHint>
+                <SettingHint className="settings-field-label" text={'作用：启用多设备阅读历史、待看列表和收藏删除同步。\n条件：Worker 端点必须是可访问的 HTTPS 地址。'}>Cloudflare Worker 端点</SettingHint>
                 <input type="url" inputMode="url" name="worker-url" autoComplete="off" spellCheck={false} aria-label="Cloudflare Worker 端点" className="input-glass"
                   value={cfgWorkerUrl}
                   onChange={(e) => setCfgWorkerUrl(e.target.value)}
@@ -2563,7 +2563,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               </div>
 
               <div>
-                <SettingHint className="settings-field-label" text="同一 Token 下的设备会共享同步数据；Token 需要预先写入 Worker KV 的 tokens 字段。">访问 Token</SettingHint>
+                <SettingHint className="settings-field-label" text={'作用：识别同一同步账户；使用相同 Token 的设备会共享数据。\n条件：先将 Token 写入 Worker KV 的 tokens 字段。'}>访问 Token</SettingHint>
                 <span className="secret-input-shell" data-secret={cfgSyncToken}>
                   <input type="text" name="sync-token" autoComplete="off" spellCheck={false} aria-label="访问 Token" className="input-glass secret-input"
                     value={cfgSyncToken}
