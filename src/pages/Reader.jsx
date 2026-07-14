@@ -102,7 +102,6 @@ const DRAWER_COLUMNS = 3;
 const DRAWER_GAP = 12;
 const DRAWER_OVERSCAN_ROWS = 4;
 const DRAWER_ITEM_RATIO = 1.3;
-const MAX_ADJACENT_DECODE_PIXELS = 24_000_000;
 function getDrawerItemWidth(gridWidth) {
   return gridWidth > 0
     ? Math.max(72, (gridWidth - (DRAWER_COLUMNS - 1) * DRAWER_GAP) / DRAWER_COLUMNS)
@@ -1523,11 +1522,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       }
     };
 
-    unloadImg(imgLeftRef);
-    unloadImg(imgRightRef);
-
-    (async () => {
-      const ok = await loadImg(imgCurrRef, pages[idx]);
+    loadImg(imgCurrRef, pages[idx]).then((ok) => {
       if (!alive || loadSeq !== immersiveLoadSeqRef.current) return;
       if (currentIndexRef.current !== idx) return;
       if (ok) {
@@ -1545,27 +1540,15 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
             : { ...prev, status: 'error' }
         ));
       }
-      if (!ok) {
-        unloadImg(imgLeftRef);
-        unloadImg(imgRightRef);
-        return;
-      }
+    });
 
-      const currentImage = imgCurrRef.current;
-      const currentPixels = (currentImage?.naturalWidth || 0) * (currentImage?.naturalHeight || 0);
-      if (currentPixels <= MAX_ADJACENT_DECODE_PIXELS) {
-        const l2r = settings.direction === 'ltr';
-        const prevIdx = l2r ? idx - 1 : idx + 1;
-        const nextIdx = l2r ? idx + 1 : idx - 1;
-        if (prevIdx >= 0 && prevIdx < pages.length) void loadImg(imgLeftRef, pages[prevIdx]);
-        else unloadImg(imgLeftRef);
-        if (nextIdx >= 0 && nextIdx < pages.length) void loadImg(imgRightRef, pages[nextIdx]);
-        else unloadImg(imgRightRef);
-      } else {
-        unloadImg(imgLeftRef);
-        unloadImg(imgRightRef);
-      }
-    })();
+    const l2r = settings.direction === 'ltr';
+    const prevIdx = l2r ? idx - 1 : idx + 1;
+    const nextIdx = l2r ? idx + 1 : idx - 1;
+    if (prevIdx >= 0 && prevIdx < pages.length) void loadImg(imgLeftRef, pages[prevIdx]);
+    else unloadImg(imgLeftRef);
+    if (nextIdx >= 0 && nextIdx < pages.length) void loadImg(imgRightRef, pages[nextIdx]);
+    else unloadImg(imgRightRef);
     return () => {
       alive = false;
     };

@@ -12,8 +12,10 @@ assert.doesNotMatch(reader, /ensureImageDecoded/);
 assert.match(reader, /height: '2px'/);
 assert.match(reader, /scheduleZoomTransform/);
 assert.match(reader, /zoomTransformFrameRef/);
-assert.match(reader, /MAX_ADJACENT_DECODE_PIXELS/);
-assert.match(reader, /currentPixels <= MAX_ADJACENT_DECODE_PIXELS/);
+assert.doesNotMatch(reader, /MAX_ADJACENT_DECODE_PIXELS/);
+assert.doesNotMatch(reader, /currentPixels/);
+assert.match(reader, /void loadImg\(imgLeftRef, pages\[prevIdx\]\)/);
+assert.match(reader, /void loadImg\(imgRightRef, pages\[nextIdx\]\)/);
 assert.match(reader, /role="status" aria-live="polite"/);
 assert.match(reader, /setThumbState\(\(state\) => state === 'queued' \? state : 'loading'\)/);
 
