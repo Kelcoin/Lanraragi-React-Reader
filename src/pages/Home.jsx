@@ -2311,18 +2311,16 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="archive-category-list" style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '16px', alignItems: 'center', justifyContent: 'center' }}>
           {categories.map(cat => {
             const isActive = selectedCategory?.id === cat.id;
             const label = cat.name || cat.id;
             return (
               <button
                 key={cat.id}
-                className="btn"
+                className="btn archive-category-button"
                 onClick={() => handleCategoryClick(cat)}
                 style={{
-                  padding: '4px 12px',
-                  fontSize: '12px',
                   fontWeight: isActive ? 600 : 400,
                   borderRadius: '18px',
                   ...(isActive ? {
@@ -2343,11 +2341,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             return (
               <button
                 key={UNTAGGED_CATEGORY_ID}
-                className="btn"
+                className="btn archive-category-button"
                 onClick={handleUntaggedCategoryClick}
                 style={{
-                  padding: '4px 12px',
-                  fontSize: '12px',
                   fontWeight: isActive ? 600 : 400,
                   borderRadius: '18px',
                   ...(isActive ? {

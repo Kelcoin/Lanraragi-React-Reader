@@ -105,13 +105,25 @@ export default function Recommendations({ currentArchive }) {
 
   const noCrop = useMemo(() => !getCropCover(), [currentArchive?.arcid]);
 
-  const artistTags = useMemo(() => {
+  const archiveTags = useMemo(() => {
     if (!currentArchive?.tags) return [];
-    return currentArchive.tags.split(',').map(t => t.trim()).filter(Boolean).filter(t => {
-      const p = t.split(':')[0].toLowerCase();
-      return p === 'artist' || p === 'group';
-    });
+    return currentArchive.tags.split(',').map(t => t.trim()).filter(Boolean);
   }, [currentArchive?.tags]);
+
+  const isCosplayWithCosplayer = useMemo(() => {
+    const hasCosplay = archiveTags.some((tag) => tag.toLowerCase() === 'category:cosplay');
+    const hasCosplayer = archiveTags.some((tag) => /^cosplayer:\s*\S/i.test(tag));
+    return hasCosplay && hasCosplayer;
+  }, [archiveTags]);
+
+  const sameCreatorTags = useMemo(() => {
+    return archiveTags.filter(t => {
+      const p = t.split(':')[0].toLowerCase();
+      return isCosplayWithCosplayer ? p === 'cosplayer' : p === 'artist' || p === 'group';
+    });
+  }, [archiveTags, isCosplayWithCosplayer]);
+  const sameCreatorType = isCosplayWithCosplayer ? 'cosplayer' : 'artist';
+  const sameCreatorLabel = isCosplayWithCosplayer ? '同Coser' : '同作者';
 
   const sourceCategoryLower = useMemo(() => {
     if (!currentArchive?.tags) return new Set();
@@ -120,7 +132,7 @@ export default function Recommendations({ currentArchive }) {
 
   useEffect(() => {
     if (!currentArchive?.arcid || !currentArchive?.tags) return;
-    const cacheKey = `lrr_rec_cache_v2_${currentArchive.arcid}`;
+    const cacheKey = `lrr_rec_cache_v3_${sameCreatorType}_${currentArchive.arcid}`;
     let cancelled = false;
 
     const fetchAll = async () => {
@@ -142,7 +154,7 @@ export default function Recommendations({ currentArchive }) {
 
         const [sim, artist] = await Promise.all([
           buildYouMayLike(),
-          buildSameAuthor(),
+          buildSameCreator(),
         ]);
 
         if (cancelled) return;
@@ -156,7 +168,7 @@ export default function Recommendations({ currentArchive }) {
     };
     fetchAll();
     return () => { cancelled = true; };
-  }, [currentArchive?.arcid, retryTick]);
+  }, [currentArchive?.arcid, retryTick, sameCreatorType]);
 
   const buildYouMayLike = async () => {
     const tags = currentArchive.tags.split(',').map(t => t.trim()).filter(Boolean);
@@ -215,11 +227,11 @@ export default function Recommendations({ currentArchive }) {
     return picked;
   };
 
-  const buildSameAuthor = async () => {
-    if (artistTags.length === 0) return [];
+  const buildSameCreator = async () => {
+    if (sameCreatorTags.length === 0) return [];
     const map = new Map();
 
-    for (const tag of shuffle(artistTags)) {
+    for (const tag of shuffle(sameCreatorTags)) {
       if (map.size >= PER_VIEW_LIMIT * 2) break;
       try {
         const res = await lrrApi.search(`${tag}$`);
@@ -243,12 +255,12 @@ export default function Recommendations({ currentArchive }) {
   };
 
   const refreshCache = useCallback(async () => {
-    const cacheKey = `lrr_rec_cache_v2_${currentArchive.arcid}`;
+    const cacheKey = `lrr_rec_cache_v3_${sameCreatorType}_${currentArchive.arcid}`;
     try { localStorage.removeItem(cacheKey); } catch {}
     retryCountRef.current = 0;
     setLoading(true);
     try {
-      const [sim, artist] = await Promise.all([buildYouMayLike(), buildSameAuthor()]);
+      const [sim, artist] = await Promise.all([buildYouMayLike(), buildSameCreator()]);
       setSimData(sim);
       setArtistData(artist);
       if (sim.length || artist.length) {
@@ -256,12 +268,12 @@ export default function Recommendations({ currentArchive }) {
       }
     } catch {}
     setLoading(false);
-  }, [currentArchive]);
+  }, [currentArchive, sameCreatorType]);
 
   useEffect(() => {
     if (!currentArchive?.arcid) return undefined;
     if (loading) return undefined;
-    if (simData.length > 0 || artistData.length > 0 || artistTags.length === 0) {
+    if (simData.length > 0 || artistData.length > 0 || sameCreatorTags.length === 0) {
       retryCountRef.current = 0;
       return undefined;
     }
@@ -273,7 +285,7 @@ export default function Recommendations({ currentArchive }) {
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [artistData.length, artistTags.length, currentArchive?.arcid, loading, simData.length]);
+  }, [artistData.length, currentArchive?.arcid, loading, sameCreatorTags.length, simData.length]);
 
   const toggleCollapse = () => setCollapsed(v => !v);
   const data = tab === 'sim' ? simData : artistData;
@@ -333,7 +345,7 @@ export default function Recommendations({ currentArchive }) {
     }
   }, [archiveDeleteTarget]);
 
-  if (!currentArchive || (!loading && simData.length === 0 && artistData.length === 0 && artistTags.length === 0)) return null;
+  if (!currentArchive || (!loading && simData.length === 0 && artistData.length === 0 && sameCreatorTags.length === 0)) return null;
 
   return (
     <>
@@ -360,7 +372,7 @@ export default function Recommendations({ currentArchive }) {
                 border: tab === 'sim' ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.15)',
                 color: tab === 'sim' ? '#fff' : '#a7b1c2',
                 fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                padding: '5px 12px', borderRadius: '6px', transition: 'all 0.2s',
+                padding: '5px 12px', borderRadius: '6px', transition: 'background-color 0.2s, border-color 0.2s, color 0.2s',
               }}
             >猜你喜欢</button>
             {hasArtist && (
@@ -372,9 +384,9 @@ export default function Recommendations({ currentArchive }) {
                   border: tab === 'artist' ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.15)',
                   color: tab === 'artist' ? '#fff' : '#a7b1c2',
                   fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                  padding: '5px 12px', borderRadius: '6px', transition: 'all 0.2s',
+                  padding: '5px 12px', borderRadius: '6px', transition: 'background-color 0.2s, border-color 0.2s, color 0.2s',
                 }}
-              >同作者</button>
+              >{sameCreatorLabel}</button>
             )}
           </div>
 

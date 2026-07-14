@@ -2,7 +2,8 @@ let translationDB = null;
 let searchIndex = null;
 let dbPromise = null;
 
-const NAMESPACE_ORDER = ['artist', 'parody', 'category', 'character', 'female', 'male', 'mixed', 'other', 'group', 'series', 'language', 'uploader', 'date_added', 'timestamp', 'source'];
+const NAMESPACE_ORDER = ['artist', 'parody', 'category', 'character', 'female', 'male', 'mixed', 'other', 'group', 'series', 'language'];
+const BOTTOM_NAMESPACE_ORDER = ['uploader', 'date_added', 'timestamp', 'source'];
 const NAMESPACE_LABELS = {
   artist: '🎨 作者', parody: '📖 原作', category: '📂 分类', character: '👤 角色',
   female: '♀ 女性', male: '♂ 男性', mixed: '🔀 混合', other: '📌 其他',
@@ -63,11 +64,17 @@ export const categorizeTags = (tags) => {
     }
   });
   Object.entries(groups).forEach(([ns, tags]) => {
+    if (BOTTOM_NAMESPACE_ORDER.includes(ns)) return;
     sorted.push({ ns, tags, label: NAMESPACE_LABELS[ns] || ns, color: NAMESPACE_COLORS[ns] || NAMESPACE_COLORS.general });
   });
   if (general.length > 0) {
     sorted.push({ ns: 'general', tags: general, label: NAMESPACE_LABELS.general, color: NAMESPACE_COLORS.general });
   }
+  BOTTOM_NAMESPACE_ORDER.forEach((ns) => {
+    if (groups[ns]) {
+      sorted.push({ ns, tags: groups[ns], label: NAMESPACE_LABELS[ns], color: NAMESPACE_COLORS[ns] });
+    }
+  });
   return sorted;
 };
 

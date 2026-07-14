@@ -14,8 +14,13 @@ assert.match(reader, /scheduleZoomTransform/);
 assert.match(reader, /zoomTransformFrameRef/);
 assert.doesNotMatch(reader, /MAX_ADJACENT_DECODE_PIXELS/);
 assert.doesNotMatch(reader, /currentPixels/);
-assert.match(reader, /void loadImg\(imgLeftRef, pages\[prevIdx\]\)/);
-assert.match(reader, /void loadImg\(imgRightRef, pages\[nextIdx\]\)/);
+assert.match(reader, /void loadImg\(imgLeftRef, pages\[prevIdx\], IMAGE_LOAD_PRIORITY\.ADJACENT\)/);
+assert.match(reader, /void loadImg\(imgRightRef, pages\[nextIdx\], IMAGE_LOAD_PRIORITY\.ADJACENT\)/);
+assert.ok(
+  reader.indexOf('loadImg(imgCurrRef, pages[idx], IMAGE_LOAD_PRIORITY.CRITICAL)')
+    < reader.indexOf('loadImg(imgLeftRef, pages[prevIdx], IMAGE_LOAD_PRIORITY.ADJACENT)'),
+  'immersive neighbors must be scheduled only after the current-page request',
+);
 assert.match(reader, /role="status" aria-live="polite"/);
 assert.match(reader, /setThumbState\(\(state\) => state === 'queued' \? state : 'loading'\)/);
 

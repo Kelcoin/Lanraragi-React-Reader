@@ -3,44 +3,25 @@
 // instead of re-fetching from network.
 const MEM_CACHE = new Map();
 const MAX_MEM = 200;
-const MAX_CONCURRENT = 3;
 const DISK_CACHE = 'lrr-img-v3';
 import { imageCacheIndex } from './imageCacheIndex.js';
 import { resolveCacheLimit, selectCacheEvictions } from './cachePolicy.js';
+import { createImageLoadQueue, IMAGE_LOAD_PRIORITY } from './imageLoadQueue.js';
+
+export { IMAGE_LOAD_PRIORITY } from './imageLoadQueue.js';
 
 const CACHE_MODE_KEY = 'lrr_image_cache_limit';
 
-const pendingPromises = new Map();
 const lastIndexTouch = new Map();
 const INDEX_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 let cleanupTimer = null;
 let diskCachePromise = null;
-let activeCount = 0;
-const waitQueue = [];
 const retiredObjectUrls = new Set();
+const imageLoadQueue = createImageLoadQueue({ maxConcurrent: 3 });
 
 function getDiskCache() {
   if (!diskCachePromise) diskCachePromise = caches.open(DISK_CACHE);
   return diskCachePromise;
-}
-
-function nextInQueue() {
-  if (waitQueue.length === 0) return;
-  const { resolve } = waitQueue.shift();
-  resolve();
-}
-
-function acquireSlot() {
-  if (activeCount < MAX_CONCURRENT) {
-    activeCount++;
-    return Promise.resolve();
-  }
-  return new Promise(resolve => { waitQueue.push({ resolve }); });
-}
-
-function releaseSlot() {
-  activeCount--;
-  nextInQueue();
 }
 
 // ── Disk cache helpers ──
@@ -94,18 +75,24 @@ function rememberBlob(key, blob) {
   return objectUrl;
 }
 
-export async function primeImage(key, fetcher) {
+function scheduleImageLoad(key, fetcher, priority = IMAGE_LOAD_PRIORITY.NORMAL) {
+  return imageLoadQueue.schedule(key, async () => {
+    if (MEM_CACHE.has(key)) return MEM_CACHE.get(key).blob;
+    let blob = await diskGet(key);
+    if (!blob) {
+      blob = await fetcher();
+      if (!blob) return null;
+      diskPut(key, blob).catch(() => {});
+    }
+    return blob;
+  }, priority);
+}
+
+export async function primeImage(key, fetcher, { priority = IMAGE_LOAD_PRIORITY.PRELOAD } = {}) {
   if (!key || typeof fetcher !== 'function') return false;
   if (MEM_CACHE.has(key)) return true;
-
-  const blob = await diskGet(key);
-  if (blob) return true;
-
   try {
-    const fetched = await fetcher();
-    if (!fetched) return false;
-    await diskPut(key, fetched);
-    return true;
+    return !!(await scheduleImageLoad(key, fetcher, priority));
   } catch {
     return false;
   }
@@ -121,45 +108,17 @@ export async function getCachedImage(key) {
 }
 
 // ── Public API ──
-export async function getImage(key, fetcher) {
+export async function getImage(key, fetcher, { priority = IMAGE_LOAD_PRIORITY.NORMAL } = {}) {
   // 1. Memory cache (instant)
   if (MEM_CACHE.has(key)) {
     return MEM_CACHE.get(key).objectUrl;
   }
 
-  // 2. Deduplicate in-flight requests
-  if (pendingPromises.has(key)) {
-    return pendingPromises.get(key);
-  }
-
-  const promise = (async () => {
-    await acquireSlot();
-    try {
-      // Re-check memory (might have been filled while waiting)
-      if (MEM_CACHE.has(key)) {
-        return MEM_CACHE.get(key).objectUrl;
-      }
-
-      // 3. Disk cache (persists across reloads)
-      let blob = await diskGet(key);
-
-      // 4. Network fetch
-      if (!blob) {
-        try { blob = await fetcher(); } catch { return null; }
-        if (!blob) return null;
-        // Persist to disk (don't block)
-        diskPut(key, blob).catch(() => {});
-      }
-
-      return rememberBlob(key, blob);
-    } finally {
-      releaseSlot();
-      pendingPromises.delete(key);
-    }
-  })();
-
-  pendingPromises.set(key, promise);
-  return promise;
+  let blob;
+  try { blob = await scheduleImageLoad(key, fetcher, priority); } catch { return null; }
+  if (!blob) return null;
+  if (MEM_CACHE.has(key)) return MEM_CACHE.get(key).objectUrl;
+  return rememberBlob(key, blob);
 }
 
 export async function clearImageCache({ disk = false } = {}) {
