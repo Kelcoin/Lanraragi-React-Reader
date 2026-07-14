@@ -7,6 +7,12 @@ export function markHorizontalScrollActivity(el) {
   el.__horizontalScrollTimer = setTimeout(() => { delete el.dataset.scrollBlock; }, 300);
 }
 
+export function getHorizontalWheelDelta(event, scrollWidth, clientWidth) {
+  if (event.ctrlKey || scrollWidth <= clientWidth + 1) return null;
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  return delta === 0 ? null : delta;
+}
+
 export function useHorizontalScroller() {
   const scrollerElRef = useRef(null);
   const dragStateRef = useRef({
@@ -47,14 +53,13 @@ export function useHorizontalScroller() {
   }, [finishDrag]);
 
   const handleWheel = useCallback((e) => {
-    if (e.ctrlKey) return;
     const el = e.currentTarget || scrollerElRef.current;
     if (!el) return;
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    if (delta === 0) return;
+    const delta = getHorizontalWheelDelta(e, el.scrollWidth, el.clientWidth);
+    if (delta === null) return;
     if (e.cancelable) e.preventDefault();
     e.stopPropagation();
-    if (el.scrollWidth > el.clientWidth + 1) el.scrollLeft += delta * 2.4;
+    el.scrollLeft += delta * 2.4;
     markHorizontalScrollActivity(el);
   }, []);
 
@@ -110,7 +115,7 @@ export function useHorizontalScroller() {
     touchAction: 'auto',
     WebkitOverflowScrolling: 'touch',
     overscrollBehaviorX: 'contain',
-    overscrollBehaviorY: 'contain',
+    overscrollBehaviorY: 'auto',
   }), []);
 
   const getMouseScrollStyle = useCallback(() => ({

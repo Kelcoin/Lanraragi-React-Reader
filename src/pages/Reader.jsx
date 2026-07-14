@@ -1822,7 +1822,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       const observedPage = highestObservedPageRef.current.get(archiveId) || 0;
       const highestPage = clampProgressPage(Math.max(observedPage, page), pages.length);
       highestObservedPageRef.current.set(archiveId, highestPage);
-      saveHistory(archive, highestPage).catch(() => {});
+      saveHistory(archive, highestPage, {
+        immediateRemote: serverTracksProgress === false,
+      }).catch(() => {});
       setHistoryEntries(getHistory());
       const totalPages = Number(archive.pagecount || pages.length) || 0;
       if (archiveId && totalPages > 0 && (currentIndex + 1) / totalPages > 0.8 && !watchlistAutoRemovedRef.current.has(archiveId)) {

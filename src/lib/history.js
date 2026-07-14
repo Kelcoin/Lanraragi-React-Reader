@@ -21,6 +21,7 @@ let remoteLoadedScope = '';
 let historyFlushTimer = null;
 let historyFlushPromise = null;
 let pendingHistoryScope = '';
+let pendingHistoryUrgent = false;
 const pendingHistorySync = new Map();
 const pendingHistoryPageCaps = new Map();
 
@@ -137,13 +138,14 @@ function scheduleHistoryFlush(delay = HISTORY_SYNC_INTERVAL_MS) {
   }, delay);
 }
 
-function queueHistorySync(item, pageCap = 0) {
+function queueHistorySync(item, pageCap = 0, immediateRemote = false) {
   const cfg = remoteConfig();
   if (!cfg) return;
   const scope = `${cfg.base}|${cfg.token}`;
   if (pendingHistoryScope && pendingHistoryScope !== scope) {
     pendingHistorySync.clear();
     pendingHistoryPageCaps.clear();
+    pendingHistoryUrgent = false;
   }
   pendingHistoryScope = scope;
   if (pageCap > 0) pendingHistoryPageCaps.set(item.id, pageCap);
@@ -152,7 +154,12 @@ function queueHistorySync(item, pageCap = 0) {
     ? { ...queued, page: clampProgressPage(queued.page, pageCap) }
     : null;
   pendingHistorySync.set(item.id, mergeMonotonicHistoryItems(boundedQueued ? [boundedQueued] : [], [item])[0]);
-  scheduleHistoryFlush();
+  pendingHistoryUrgent = pendingHistoryUrgent || immediateRemote;
+  if (immediateRemote && historyFlushTimer) {
+    clearTimeout(historyFlushTimer);
+    historyFlushTimer = null;
+  }
+  if (!historyFlushPromise) scheduleHistoryFlush(immediateRemote ? 0 : HISTORY_SYNC_INTERVAL_MS);
 }
 
 export async function flushHistorySync({ keepalive = false } = {}) {
@@ -161,6 +168,7 @@ export async function flushHistorySync({ keepalive = false } = {}) {
   if (!cfg || (pendingHistoryScope && pendingHistoryScope !== scope)) {
     pendingHistorySync.clear();
     pendingHistoryPageCaps.clear();
+    pendingHistoryUrgent = false;
     pendingHistoryScope = '';
     if (historyFlushTimer) clearTimeout(historyFlushTimer);
     historyFlushTimer = null;
@@ -174,6 +182,8 @@ export async function flushHistorySync({ keepalive = false } = {}) {
   }
 
   const batch = Array.from(pendingHistorySync.values());
+  const batchWasUrgent = pendingHistoryUrgent;
+  pendingHistoryUrgent = false;
   batch.forEach((item) => pendingHistorySync.delete(item.id));
   historyFlushPromise = workerJson('/history', { method: 'PUT', body: { histories: batch }, keepalive })
     .then(() => true)
@@ -185,6 +195,7 @@ export async function flushHistorySync({ keepalive = false } = {}) {
         const boundedItem = { ...item, page: clampProgressPage(item.page, pageCap) };
         pendingHistorySync.set(item.id, mergeMonotonicHistoryItems(boundedQueued ? [boundedQueued] : [], [boundedItem])[0]);
       });
+      pendingHistoryUrgent = pendingHistoryUrgent || batchWasUrgent;
       scheduleHistoryFlush(HISTORY_SYNC_RETRY_MS);
       return false;
     })
@@ -193,8 +204,11 @@ export async function flushHistorySync({ keepalive = false } = {}) {
       if (pendingHistorySync.size === 0) {
         pendingHistoryScope = '';
         pendingHistoryPageCaps.clear();
+        pendingHistoryUrgent = false;
       }
-      if (pendingHistorySync.size > 0 && !historyFlushTimer) scheduleHistoryFlush();
+      if (pendingHistorySync.size > 0 && !historyFlushTimer) {
+        scheduleHistoryFlush(pendingHistoryUrgent ? 0 : HISTORY_SYNC_INTERVAL_MS);
+      }
     });
   return historyFlushPromise;
 }
@@ -294,7 +308,7 @@ export function loadHistoryState(options = {}) {
   return trackedPromise;
 }
 
-export const saveHistory = async (archive, page) => {
+export const saveHistory = async (archive, page, { immediateRemote = false } = {}) => {
   if (!archive?.arcid) return false;
   const item = archiveToHistoryItem(archive, page);
   clampHistoryProgressForArchive(item.id, archive.pagecount);
@@ -307,7 +321,7 @@ export const saveHistory = async (archive, page) => {
   writeHistoryCache(history);
 
   if (!hasRemoteHistory()) return true;
-  queueHistorySync(history.find((entry) => entry.id === item.id), archive.pagecount);
+  queueHistorySync(history.find((entry) => entry.id === item.id), archive.pagecount, immediateRemote);
   return true;
 };
 

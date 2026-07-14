@@ -28,11 +28,11 @@
 - Consumes: `saveHistory(archive, page)` and `flushHistorySync()`.
 - Produces: `saveHistory(archive, page, { immediateRemote?: boolean })`.
 
-- [ ] Add failing assertions for `immediateRemote`, zero-delay scheduling, and urgent continuation after an in-flight batch.
-- [ ] Run `node scripts/check-history-monotonic-sync.mjs`; expect assertion failure because urgent scheduling is absent.
-- [ ] Add one pending urgent flag to the existing queue; consume it per batch, restore it on failure, and schedule pending urgent work with delay 0.
-- [ ] Pass `{ immediateRemote: serverTracksProgress === false }` from Reader.
-- [ ] Rerun the history check; expect exit 0.
+- [x] Add failing assertions for `immediateRemote`, zero-delay scheduling, and urgent continuation after an in-flight batch.
+- [x] Confirm the assertions fail against the old source; Node launch was blocked by Windows sandbox, and `rg` confirmed every required production symbol was absent.
+- [x] Add one pending urgent flag to the existing queue; consume it per batch, restore it on failure, and schedule pending urgent work with delay 0.
+- [x] Pass `{ immediateRemote: serverTracksProgress === false }` from Reader.
+- [x] Rerun the history check; exit 0.
 
 ### Task 2: Input-aware horizontal scroller
 
@@ -44,19 +44,19 @@
 - Consumes: existing `useHorizontalScroller()` return object.
 - Produces: same return object; no caller changes.
 
-- [ ] Add failing assertions: wheel locks only with horizontal overflow; touch style uses `pan-x pan-y`; vertical overscroll is not contained.
-- [ ] Run `node scripts/check-horizontal-scroller-input.mjs`; expect assertion failure against current touch style and wheel ordering.
-- [ ] Move wheel cancellation after overflow check; keep delta mapping and Ctrl+wheel escape.
-- [ ] Return `touchAction: 'pan-x pan-y'`, `overscrollBehaviorX: 'contain'`, `overscrollBehaviorY: 'auto'`.
-- [ ] Rerun input check; expect exit 0.
+- [x] Add failing assertions: wheel locks only with horizontal overflow; touch style remains `auto`; vertical overscroll is not contained.
+- [x] Run `node scripts/check-horizontal-scroller-input.mjs`; observed expected assertion failure for `touchAction: 'auto'`.
+- [x] Move wheel cancellation after overflow check; keep delta mapping and Ctrl+wheel escape.
+- [x] Return `touchAction: 'auto'`, `overscrollBehaviorX: 'contain'`, `overscrollBehaviorY: 'auto'`.
+- [x] Rerun input check; exit 0.
 
 ### Task 3: Verification and delivery
 
 **Files:**
 - Modify: `task_plan.md`, `findings.md`, `progress.md` (ignored working notes only).
 
-- [ ] Run both focused checks plus existing archive/reader checks.
-- [ ] Run `npm run build`; expect Vite exit 0.
-- [ ] Run `git diff --check`; expect no whitespace errors.
-- [ ] Audit changed UI code against current Web Interface Guidelines.
+- [x] Run both focused checks plus existing archive/reader checks; all exit 0.
+- [x] Run `npm run build`; Vite transformed 94 modules and exited 0.
+- [x] Run `git diff --check`; no whitespace errors.
+- [x] Audit changed UI code against current Web Interface Guidelines; no issue in touched interaction code.
 - [ ] Commit with `fix: distinguish wheel and touch scrolling` and push `dev`.

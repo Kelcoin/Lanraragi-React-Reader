@@ -37,6 +37,10 @@ const historySource = fs.readFileSync(new URL('../src/lib/history.js', import.me
 const readerSource = fs.readFileSync(new URL('../src/pages/Reader.jsx', import.meta.url), 'utf8');
 
 assert.match(historySource, /const HISTORY_SYNC_INTERVAL_MS = 8 \* 1000/);
+assert.match(historySource, /pendingHistoryUrgent/);
+assert.match(historySource, /immediateRemote/);
+assert.match(historySource, /scheduleHistoryFlush\(immediateRemote \? 0 : HISTORY_SYNC_INTERVAL_MS\)/);
+assert.match(historySource, /pendingHistoryUrgent \? 0 : HISTORY_SYNC_INTERVAL_MS/);
 assert.match(historySource, /function scheduleHistoryFlush[\s\S]*if \(historyFlushTimer\) return/);
 assert.match(historySource, /await flushHistorySync\(\);[\s\S]*workerJson\('\/history'\)/);
 assert.match(historySource, /mergeMonotonicHistoryItems\(remoteHistories, getStoredHistory\(\)\)/);
@@ -53,6 +57,7 @@ assert.match(readerSource, /highestObservedPageRef/);
 assert.match(readerSource, /highestLrrSyncedPageRef/);
 assert.match(readerSource, /Math\.max\(lrrProgress, localProgress\)/);
 assert.match(readerSource, /enqueueLrrProgressSync\(archiveId, highestPage\)/);
+assert.match(readerSource, /immediateRemote: serverTracksProgress === false/);
 assert.match(readerSource, /clampProgressPage\(Math\.max\(observedPage, page\), pages\.length\)/);
 
 export { historySource, readerSource };

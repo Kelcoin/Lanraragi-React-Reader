@@ -10,7 +10,7 @@
 
 `saveHistory` 增加可选 `immediateRemote`。Reader 仅在 `serverTracksProgress === false` 时传入。history 队列保留 urgent 状态；立即请求若遇到在途 Worker 请求，下一批仍在前一批结束后立即发送，不退回 8 秒。
 
-`useHorizontalScroller` 继续独占非 passive wheel listener。只有存在横向溢出时才阻止默认滚动并把 wheel delta 映射为 `scrollLeft`。触屏不加 JS 手势识别，使用浏览器原生 `touchAction: pan-x pan-y`；移除纵向 overscroll contain，避免纵滑被横向组件吞掉。
+`useHorizontalScroller` 继续独占非 passive wheel listener。只有存在横向溢出时才阻止默认滚动并把 wheel delta 映射为 `scrollLeft`。触屏不加 JS 手势识别，保留浏览器原生 `touchAction: auto`；移除纵向 overscroll contain，避免纵滑被横向组件吞掉并保留页面缩放。
 
 ## 边界
 
