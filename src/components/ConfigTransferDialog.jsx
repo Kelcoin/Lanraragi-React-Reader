@@ -52,6 +52,11 @@ export default function ConfigTransferDialog({ open, mode = 'export', initialVal
       initialFocusSelector="[data-config-transfer-input]"
       onCancel={onCancel}
       onConfirm={isExport ? onCancel : submit}
+      actionsBefore={isExport ? (
+        <button type="button" className="btn" onClick={copyValue}>
+          {copied ? '已复制' : '复制'}
+        </button>
+      ) : null}
     >
       <label className="config-transfer-field" htmlFor={inputId}>
         配置文本
@@ -69,7 +74,6 @@ export default function ConfigTransferDialog({ open, mode = 'export', initialVal
           placeholder="粘贴配置文本…"
         />
       </label>
-      {isExport && <button type="button" className="btn config-transfer-copy" onClick={copyValue}>{copied ? '已复制' : '复制配置'}</button>}
       {error && <div className="config-transfer-error" role="alert">{error}</div>}
     </ConfirmDialog>
   );

@@ -13,6 +13,7 @@ export default function ConfirmDialog({
   destructive = true,
   confirmDisabled = false,
   initialFocusSelector = '[data-dialog-cancel]',
+  actionsBefore,
   children,
 }) {
   const titleId = useId();
@@ -66,6 +67,7 @@ export default function ConfirmDialog({
         )}
         {children}
         <div className="confirm-dialog-actions">
+          {actionsBefore}
           {showCancel && (
             <button
               type="button"
