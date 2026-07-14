@@ -7,6 +7,7 @@ export default function ConfirmDialog({
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  showCancel = true,
   onConfirm,
   onCancel,
   destructive = true,
@@ -65,17 +66,20 @@ export default function ConfirmDialog({
         )}
         {children}
         <div className="confirm-dialog-actions">
-          <button
-            type="button"
-            className="btn"
-            data-dialog-cancel
-            onClick={onCancel}
-          >
-            {cancelLabel}
-          </button>
+          {showCancel && (
+            <button
+              type="button"
+              className="btn"
+              data-dialog-cancel
+              onClick={onCancel}
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             className={`btn confirm-dialog-confirm${destructive ? ' is-destructive' : ''}`}
+            data-dialog-confirm
             onClick={onConfirm}
             disabled={confirmDisabled}
           >

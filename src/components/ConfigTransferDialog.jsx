@@ -46,6 +46,7 @@ export default function ConfigTransferDialog({ open, mode = 'export', initialVal
       message={isExport ? '复制下面的配置文本，在其他设备中粘贴导入。' : '粘贴从其他设备导出的配置文本。'}
       confirmLabel={isExport ? '关闭' : '导入配置'}
       cancelLabel={isExport ? '关闭' : '取消'}
+      showCancel={!isExport}
       destructive={false}
       confirmDisabled={!isExport && !value.trim()}
       initialFocusSelector="[data-config-transfer-input]"

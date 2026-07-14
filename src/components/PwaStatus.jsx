@@ -19,12 +19,22 @@ export default function PwaStatus() {
 
   useEffect(() => {
     const handleUpdateReady = (event) => {
-      if (event.detail?.worker) setUpdateWorker(event.detail.worker);
+      const worker = event.detail?.worker;
+      if (!worker) return;
+      setUpdateWorker(worker);
     };
 
     window.addEventListener('lrr:pwa-update-ready', handleUpdateReady);
     return () => window.removeEventListener('lrr:pwa-update-ready', handleUpdateReady);
   }, []);
+
+  useEffect(() => {
+    if (!updateWorker) return undefined;
+    const applyTimer = setTimeout(() => {
+      updateWorker.postMessage({ type: 'SKIP_WAITING' });
+    }, 900);
+    return () => clearTimeout(applyTimer);
+  }, [updateWorker]);
 
   useEffect(() => {
     let clearTimer = null;
@@ -53,18 +63,8 @@ export default function PwaStatus() {
     };
   }, []);
 
-  const handleApplyUpdate = () => {
-    if (!updateWorker) return;
-    updateWorker.postMessage({ type: 'SKIP_WAITING' });
-  };
-
   const primary = updateWorker
-    ? {
-        message: '新版本已就绪',
-        action: '刷新',
-        onAction: handleApplyUpdate,
-        onClose: () => setUpdateWorker(null),
-      }
+    ? { message: '新版本已就绪，即将刷新以应用。' }
     : connectionMessage
       ? { message: connectionMessage }
       : null;
@@ -107,38 +107,6 @@ export default function PwaStatus() {
         <span style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 600 }}>
           {primary.message}
         </span>
-        {primary.action && (
-          <button
-            type="button"
-            className="btn"
-            onClick={primary.onAction}
-            style={{ padding: '6px 12px', fontSize: '12px', flexShrink: 0 }}
-          >
-            {primary.action}
-          </button>
-        )}
-        {primary.onClose && (
-          <button
-            type="button"
-            onClick={primary.onClose}
-            aria-label="关闭"
-            title="关闭"
-            style={{
-              width: '28px',
-              height: '28px',
-              border: 'none',
-              borderRadius: '6px',
-              background: 'transparent',
-              color: 'rgba(227,233,243,0.72)',
-              cursor: 'pointer',
-              fontSize: '18px',
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            x
-          </button>
-        )}
       </div>
     </div>
   );

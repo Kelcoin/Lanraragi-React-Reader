@@ -18,6 +18,7 @@ import CacheSettings from '../components/CacheSettings';
 import EhFavoriteDeleteSwitch from '../components/EhFavoriteDeleteSwitch';
 import ToggleSwitch from '../components/ToggleSwitch';
 import AppVersion from '../components/AppVersion';
+import ConfigTransferDialog from '../components/ConfigTransferDialog';
 import SettingHint from '../components/SettingHint';
 import { HomeSectionGlyph, ThemeModeGlyph, ToolbarGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
 import { deleteFilterPreset, readFilterPresets, renameFilterPreset, saveFilterPreset } from '../lib/filterPresets';
@@ -379,6 +380,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const [cropCover, setCropCoverState] = useState(getCropCover);
   const [archiveBrowseMode, setArchiveBrowseModeState] = useState(() => getArchiveBrowseMode());
   const [showConfig, setShowConfig] = useState(false);
+  const [configTransfer, setConfigTransfer] = useState(null);
+  const [configNotice, setConfigNotice] = useState(null);
   const [historyDeleteTarget, setHistoryDeleteTarget] = useState(null);
   const [archiveMenu, setArchiveMenu] = useState(null);
   const [archiveDeleteTarget, setArchiveDeleteTarget] = useState(null);
@@ -581,6 +584,29 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setShowConfig(false);
     navigateUpload();
   }, [saveCurrentHomeForNavigation]);
+
+  const handleExportConfig = () => {
+    setConfigTransfer({ mode: 'export', value: exportConfig() });
+  };
+
+  const handleImportConfig = async () => {
+    let value = '';
+    try { value = await navigator.clipboard.readText(); } catch {}
+    setConfigTransfer({ mode: 'import', value });
+  };
+
+  const handleConfirmImportConfig = async (encoded) => {
+    const count = importConfig(encoded);
+    setCfgWorkerUrl(getWorkerUrl());
+    setCfgSyncToken(getSyncToken());
+    setReaderSettings(readReaderSettings());
+    setEhFavoriteDeleteSyncState(getEhFavoriteDeleteSync());
+    setConfigTransfer(null);
+    setConfigNotice({
+      title: '导入完成',
+      message: `已导入 ${count} 项配置。重新加载后生效。`,
+    });
+  };
 
   const updateReaderSettings = useCallback((updater) => {
     setReaderSettings((prev) => {
@@ -2590,33 +2616,12 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
 
           <div style={{ display: 'flex', gap: '10px', padding: '16px 28px 0', borderTop: '1px solid var(--glass-border)' }}>
             <button type="button" className="btn"
-              onClick={() => {
-                const encoded = exportConfig();
-                navigator.clipboard.writeText(encoded).then(() => alert('配置已复制到剪贴板。在其他设备粘贴导入即可。')).catch(() => {
-                  prompt('复制以下文本到其他设备导入:', encoded);
-                });
-              }}
+              onClick={handleExportConfig}
               style={{ flex: 1, padding: '9px', fontSize: '12px' }}>
               导出配置
             </button>
             <button type="button" className="btn"
-              onClick={async () => {
-                let encoded = '';
-                try { encoded = await navigator.clipboard.readText(); } catch {}
-                if (!encoded) encoded = prompt('粘贴从其他设备导出的配置文本:') || '';
-                if (!encoded) return;
-                try {
-                  const count = importConfig(encoded);
-                  setCfgWorkerUrl(getWorkerUrl());
-                  setCfgSyncToken(getSyncToken());
-                  setReaderSettings(readReaderSettings());
-                  setEhFavoriteDeleteSyncState(getEhFavoriteDeleteSync());
-                  alert(`已导入 ${count} 项配置`);
-                  window.location.reload();
-                } catch (e) {
-                  alert(e.message || '导入失败');
-                }
-              }}
+              onClick={handleImportConfig}
               style={{ flex: 1, padding: '9px', fontSize: '12px' }}>
               导入配置
             </button>
@@ -2708,6 +2713,24 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       cancelLabel="取消"
       onConfirm={handleRemoveHistory}
       onCancel={() => setHistoryDeleteTarget(null)}
+    />
+    <ConfigTransferDialog
+      open={!!configTransfer}
+      mode={configTransfer?.mode}
+      initialValue={configTransfer?.value}
+      onCancel={() => setConfigTransfer(null)}
+      onConfirm={handleConfirmImportConfig}
+    />
+    <ConfirmDialog
+      open={!!configNotice}
+      title={configNotice?.title || ''}
+      message={configNotice?.message || ''}
+      confirmLabel="重新加载"
+      showCancel={false}
+      destructive={false}
+      initialFocusSelector="[data-dialog-confirm]"
+      onCancel={() => {}}
+      onConfirm={() => window.location.reload()}
     />
     </>
   );

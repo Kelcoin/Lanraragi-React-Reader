@@ -1195,6 +1195,7 @@ textarea:focus-visible,
   position: fixed;
   inset: 0;
   z-index: 200000;
+  overscroll-behavior: contain;
   padding: 20px;
   display: flex;
   align-items: center;
