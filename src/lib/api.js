@@ -66,14 +66,38 @@ export function normalizeUntaggedArchiveIds(response) {
     .filter(Boolean);
 }
 
+export async function loadArchiveMetadataBatch(ids, loadArchive, { concurrency = 6, signal } = {}) {
+  const archiveIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  if (archiveIds.length === 0) return [];
+  const results = new Array(archiveIds.length);
+  let cursor = 0;
+  const workerCount = Math.min(archiveIds.length, Math.max(1, Math.floor(Number(concurrency) || 1)));
+  const abortError = () => {
+    if (signal?.reason) return signal.reason;
+    const error = new Error('Archive metadata request aborted');
+    error.name = 'AbortError';
+    return error;
+  };
+  const worker = async () => {
+    while (cursor < archiveIds.length) {
+      if (signal?.aborted) throw abortError();
+      const index = cursor;
+      cursor += 1;
+      results[index] = await loadArchive(archiveIds[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
+
 export const lrrApi = {
-  search: (filter = '', start = 0, sortby = 'date_added', order = 'desc') =>
-    request(`/search?filter=${encodeURIComponent(filter)}&start=${start}&sortby=${sortby}&order=${order}`),
+  search: (filter = '', start = 0, sortby = 'date_added', order = 'desc', options = {}) =>
+    request(`/search?filter=${encodeURIComponent(filter)}&start=${start}&sortby=${sortby}&order=${order}`, 'GET', null, options),
   clearSearchCache: () => request('/search/cache', 'DELETE'),
 
   getRandom: (count = 10, options = {}) => request(`/search/random?count=${count}`, 'GET', null, options),
-  getUntaggedArchives: async () => normalizeUntaggedArchiveIds(await request('/archives/untagged')),
-  getArchive: (id) => request(`/archives/${id}/metadata`),
+  getUntaggedArchives: async (options = {}) => normalizeUntaggedArchiveIds(await request('/archives/untagged', 'GET', null, options)),
+  getArchive: (id, options = {}) => request(`/archives/${id}/metadata`, 'GET', null, options),
   updateArchiveMetadata: (id, { title = '', tags = '', summary = '' }) => {
     const params = new URLSearchParams({ title, tags, summary });
     return request(`/archives/${encodeURIComponent(id)}/metadata?${params}`, 'PUT');

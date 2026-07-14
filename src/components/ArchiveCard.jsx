@@ -97,6 +97,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const panelRef = useRef(null);
   const imgRef = useRef(null);
   const leaveTimerRef = useRef(null);
+  const closeTimerRef = useRef(null);
   const thumbObjectUrlRef = useRef(null);
   const [allowNetworkFallback, setAllowNetworkFallback] = useState(!cacheOnly);
   const longPressTimerRef = useRef(null);
@@ -292,21 +293,33 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   }, []);
 
   // ===== Fix 1: 200ms 延迟消失，鼠标可从卡片滑入面板 =====
-  const showPanel = (event) => {
-    if (cardRef.current?.closest?.('[data-scroll-block]')) return;
+  const clearPanelTimers = () => {
     if (leaveTimerRef.current) {
       clearTimeout(leaveTimerRef.current);
       leaveTimerRef.current = null;
     }
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const showPanel = (event) => {
+    if (cardRef.current?.closest?.('[data-scroll-block]')) return;
+    clearPanelTimers();
     hoverPointerYRef.current = event?.clientY ?? null;
     updatePanelPosition(hoverPointerYRef.current);
+    setClosing(false);
     setHovered(true);
   };
 
   const hidePanelWithDelay = () => {
+    clearPanelTimers();
     leaveTimerRef.current = setTimeout(() => {
+      leaveTimerRef.current = null;
       setClosing(true);
-      setTimeout(() => {
+      closeTimerRef.current = setTimeout(() => {
+        closeTimerRef.current = null;
         setHovered(false);
         setClosing(false);
       }, 100);
@@ -314,17 +327,16 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   };
 
   const keepPanel = () => {
-    if (leaveTimerRef.current) {
-      clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
+    clearPanelTimers();
     setClosing(false);
     setHovered(true);
   };
 
   const hidePanelImmediately = () => {
+    clearPanelTimers();
     setClosing(true);
-    setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
       setHovered(false);
       setClosing(false);
     }, 100);
@@ -333,6 +345,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   useEffect(() => {
     return () => {
       if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, []);

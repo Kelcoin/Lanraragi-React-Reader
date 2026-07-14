@@ -79,7 +79,7 @@ export default function MetadataPage({ archiveId }) {
       const result = await lrrApi.useMetadataPlugin(archiveId, plugin, pluginArg.trim() || form.title || archive.title || '');
       const { tags } = readMetadataPluginResult(result);
       if (tags) addTags(tags);
-      showStatus(tags ? '插件标签已合并，保存后生效。' : '插件执行完成，未返回新标签。', tags ? 'success' : 'info');
+      showStatus(tags ? '插件标签已合并，保存后生效。' : '插件执行完成，未返回新标签。', tags ? 'success' : 'info', { autoHide: true });
     } catch (error) { showStatus(error.message, 'error'); }
   };
   if (!archive) return <div style={{ padding: 32 }}>{status?.text || '正在载入元数据…'}</div>;

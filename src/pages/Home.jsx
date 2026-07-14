@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useReducer } from 'react';
 import { createPortal } from 'react-dom';
-import { lrrApi } from '../lib/api';
+import { loadArchiveMetadataBatch, lrrApi } from '../lib/api';
 import { getHistory, getHideRead, setHideRead, getCropCover, setCropCover, getArchiveBrowseMode, setArchiveBrowseMode, removeHistoryItem, loadHistoryState } from '../lib/history';
 import { addWatchlistItem, getWatchlist, loadWatchlistState, removeWatchlistItem, removeWatchlistItems } from '../lib/watchlist';
 import { loadTagDB, startTagDBUpdateTimer, stopTagDBUpdateTimer } from '../lib/tags';
@@ -440,6 +440,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     Number.isFinite(Number(homeSnapshot?.archivePageSize)) ? Math.max(1, Number(homeSnapshot.archivePageSize)) : ARCHIVE_PAGE_SIZE
   ));
   const [loading, setLoading] = useState(false);
+  const [archiveLoadError, setArchiveLoadError] = useState('');
   const [archivesRefreshing, setArchivesRefreshing] = useState(false);
   const [archiveRefreshPhase, dispatchArchiveRefresh] = useReducer(reduceArchiveRefreshPhase, 'idle');
   const [presets, setPresets] = useState(readFilterPresets);
@@ -473,6 +474,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const lastFetchedRef = useRef(0);
   const lastFetchedFilterRef = useRef('');
   const archiveFetchSeqRef = useRef(0);
+  const archiveAbortControllerRef = useRef(null);
+  const archiveRequestInFlightRef = useRef(false);
   const [isNarrow, setIsNarrow] = useState(window.innerWidth < 600);
   const [serverOnline, setServerOnline] = useState(null);
   const [serverProbeRunning, setServerProbeRunning] = useState(false);
@@ -490,6 +493,16 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   const resumeRefreshSuppressedUntilRef = useRef(0);
   const serverProbePromiseRef = useRef(null);
   const serverProbeLastAtRef = useRef(0);
+  const archiveBrowseStateRef = useRef(null);
+  archiveBrowseStateRef.current = {
+    archiveBrowseMode,
+    archivePage,
+    archivePageSize,
+    archiveTotal,
+    filter,
+    selectedCategory,
+    startOffset,
+  };
 
   const skipResumeTriggeredRefresh = useCallback(() => {
     const now = Date.now();
@@ -981,9 +994,22 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     };
 
     const resizeObserver = new ResizeObserver(centerLastRow);
-    const mutationObserver = new MutationObserver(centerLastRow);
+    const observeCardClasses = () => {
+      Array.from(grid.children).forEach((item) => {
+        mutationObserver.observe(item, { attributes: true, attributeFilter: ['class'] });
+      });
+    };
+    const mutationObserver = new MutationObserver((records) => {
+      if (records.some((record) => record.type === 'childList' && record.target === grid)) {
+        mutationObserver.disconnect();
+        mutationObserver.observe(grid, { childList: true });
+        observeCardClasses();
+      }
+      centerLastRow();
+    });
     resizeObserver.observe(grid);
-    mutationObserver.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    mutationObserver.observe(grid, { childList: true });
+    observeCardClasses();
     window.addEventListener('resize', centerLastRow);
     centerLastRow();
 
@@ -996,43 +1022,60 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     };
   }, [archiveBrowseMode, archivePage, archivePageSize, archives.length, isNarrow]);
 
+  const archiveSideEffectsRef = useRef({ exitColdRestoreMode, scrollToArchives });
+  archiveSideEffectsRef.current = { exitColdRestoreMode, scrollToArchives };
+
   const doFetch = useCallback(async (isReset, options = {}) => {
-    const mode = options.modeOverride || archiveBrowseMode;
+    const current = archiveBrowseStateRef.current;
+    const mode = options.modeOverride || current.archiveBrowseMode;
     const {
       background = false,
       force = false,
       clearSearchCache = false,
       filterOverride = null,
-      pageIndex = mode === ARCHIVE_BROWSE_MODES.paged ? archivePage : 0,
-      selectedCategoryOverride = selectedCategory,
+      pageIndex = mode === ARCHIVE_BROWSE_MODES.paged ? current.archivePage : 0,
     } = options;
-    const effectiveFilter = filterOverride || filter;
+    const selectedCategoryOverride = Object.hasOwn(options, 'selectedCategoryOverride')
+      ? options.selectedCategoryOverride
+      : current.selectedCategory;
+    const effectiveFilter = filterOverride || current.filter;
     const isUntaggedMode = selectedCategoryOverride?.id === UNTAGGED_CATEGORY_ID;
-    exitColdRestoreMode();
+    archiveSideEffectsRef.current.exitColdRestoreMode();
     const now = Date.now();
     const isPagedMode = mode === ARCHIVE_BROWSE_MODES.paged;
-    const requestedPage = clampArchivePage(pageIndex, archiveTotal);
-    const filterKey = `${isUntaggedMode ? UNTAGGED_CATEGORY_ID : ''}|${effectiveFilter.query}|${effectiveFilter.sortBy}|${effectiveFilter.order}|${effectiveFilter.active}|${mode}|${isPagedMode ? requestedPage : 'scroll'}`;
+    const pageSize = isPagedMode ? current.archivePageSize : ARCHIVE_PAGE_SIZE;
+    const requestedPage = clampArchivePage(pageIndex, current.archiveTotal, current.archivePageSize);
+    const filterKey = `${isUntaggedMode ? UNTAGGED_CATEGORY_ID : ''}|${effectiveFilter.query}|${effectiveFilter.sortBy}|${effectiveFilter.order}|${effectiveFilter.active}|${mode}|${pageSize}|${isPagedMode ? requestedPage : 'scroll'}`;
     if (isReset && !force && lastFetchedFilterRef.current === filterKey && now - lastFetchedRef.current < 2500) return;
+    if (!isReset && archiveRequestInFlightRef.current) return false;
 
     lastFetchedFilterRef.current = filterKey;
     lastFetchedRef.current = now;
+    archiveRequestInFlightRef.current = true;
+    archiveAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    archiveAbortControllerRef.current = controller;
     const fetchSeq = ++archiveFetchSeqRef.current;
-    if (isReset && isUntaggedMode) {
+    if (isReset && isUntaggedMode && !background) {
       setArchives([]);
       setStartOffset(0);
       setArchiveTotal(null);
       setHasMore(false);
     }
-    if (background) setArchivesRefreshing(true);
-    else setLoading(true);
+    if (background) {
+      setLoading(false);
+      setArchivesRefreshing(true);
+    } else {
+      setArchivesRefreshing(false);
+      setLoading(true);
+    }
+    setArchiveLoadError('');
     try {
       if (clearSearchCache) {
         try { await lrrApi.clearSearchCache(); } catch (e) { console.warn('清理搜索缓存失败，继续刷新归档列表', e); }
       }
-      const pageSize = isPagedMode ? archivePageSize : ARCHIVE_PAGE_SIZE;
       if (isUntaggedMode) {
-        const ids = await lrrApi.getUntaggedArchives();
+        const ids = await lrrApi.getUntaggedArchives({ signal: controller.signal });
         if (fetchSeq !== archiveFetchSeqRef.current) return false;
         if (ids.length === 0) {
           setArchiveTotal(0);
@@ -1043,27 +1086,32 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           setHasMore(false);
           return true;
         }
-        const data = await Promise.all(ids.map((id) => lrrApi.getArchive(id)));
-        if (fetchSeq !== archiveFetchSeqRef.current) return false;
-        const total = data.length;
+        const total = ids.length;
         const nextPage = isPagedMode ? clampArchivePage(requestedPage, total, pageSize) : 0;
-        const pageData = isPagedMode ? data.slice(nextPage * pageSize, nextPage * pageSize + pageSize) : data;
+        const batchStart = isPagedMode ? getArchivePageStart(nextPage, pageSize) : (isReset ? 0 : current.startOffset);
+        const batchIds = ids.slice(batchStart, batchStart + pageSize);
+        const data = await loadArchiveMetadataBatch(
+          batchIds,
+          (id) => lrrApi.getArchive(id, { signal: controller.signal }),
+          { signal: controller.signal },
+        );
+        if (fetchSeq !== archiveFetchSeqRef.current) return false;
         setArchiveTotal(total);
         setArchivePage(nextPage);
         setArchivePageInput(String(nextPage + 1));
-        setArchives(pageData);
-        setStartOffset(pageData.length);
-        setHasMore(isPagedMode ? nextPage < getArchivePageCount(total, pageSize) - 1 : false);
+        setArchives((prev) => (isPagedMode || isReset ? data : [...prev, ...data]));
+        setStartOffset(batchStart + batchIds.length);
+        setHasMore(batchStart + batchIds.length < total);
         return true;
       }
       const query = effectiveFilter.active ? (effectiveFilter.query || '').trim() : '';
-      const start = isPagedMode ? getArchivePageStart(requestedPage, pageSize) : (isReset ? 0 : startOffset);
-      let res = await lrrApi.search(query, start, effectiveFilter.sortBy, effectiveFilter.order);
+      const start = isPagedMode ? getArchivePageStart(requestedPage, pageSize) : (isReset ? 0 : current.startOffset);
+      let res = await lrrApi.search(query, start, effectiveFilter.sortBy, effectiveFilter.order, { signal: controller.signal });
       let data = res.data || [];
       if (isPagedMode && data.length > 0 && data.length < pageSize) {
         let nextStart = start + data.length;
         while (data.length < pageSize) {
-          const nextRes = await lrrApi.search(query, nextStart, effectiveFilter.sortBy, effectiveFilter.order);
+          const nextRes = await lrrApi.search(query, nextStart, effectiveFilter.sortBy, effectiveFilter.order, { signal: controller.signal });
           const nextData = nextRes.data || [];
           if (nextData.length === 0) break;
           data = [...data, ...nextData].slice(0, pageSize);
@@ -1074,7 +1122,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       }
       if (isPagedMode && data.length > pageSize) data = data.slice(0, pageSize);
       if (fetchSeq !== archiveFetchSeqRef.current) return false;
-      const total = getSearchTotal(res, data.length, isReset ? null : archiveTotal);
+      const total = getSearchTotal(res, data.length, isReset ? null : current.archiveTotal);
       setArchiveTotal(total);
       if (isPagedMode) {
         const nextPage = clampArchivePage(requestedPage, total, pageSize);
@@ -1096,29 +1144,35 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       }
       return true;
     } catch (e) {
+      if (e?.name === 'AbortError') return false;
+      if (fetchSeq !== archiveFetchSeqRef.current) return false;
+      controller.abort();
       console.error('获取归档列表失败', e);
-      if (isUntaggedMode && fetchSeq === archiveFetchSeqRef.current) {
-        setArchiveTotal(0);
-        setArchivePage(0);
-        setArchivePageInput('1');
-        setArchives([]);
-        setStartOffset(0);
-        setHasMore(false);
-      }
+      setArchiveLoadError(e?.message || (isUntaggedMode ? '获取无标签归档失败，请重试' : '获取归档列表失败，请重试'));
       return false;
     } finally {
-      if (background) setArchivesRefreshing(false);
-      else setLoading(false);
-      if (isReset && pendingArchivesScrollRef.current) {
-        pendingArchivesScrollRef.current = false;
-        setTimeout(scrollToArchives, 80);
+      if (fetchSeq === archiveFetchSeqRef.current) {
+        if (archiveAbortControllerRef.current === controller) archiveAbortControllerRef.current = null;
+        archiveRequestInFlightRef.current = false;
+        if (background) setArchivesRefreshing(false);
+        else setLoading(false);
+        if (isReset && pendingArchivesScrollRef.current) {
+          pendingArchivesScrollRef.current = false;
+          setTimeout(archiveSideEffectsRef.current.scrollToArchives, 80);
+        }
       }
     }
-  }, [archiveBrowseMode, archivePage, archivePageSize, archiveTotal, exitColdRestoreMode, filter, scrollToArchives, selectedCategory, startOffset]);
+  }, []);
+
+  useEffect(() => () => {
+    archiveFetchSeqRef.current += 1;
+    archiveRequestInFlightRef.current = false;
+    archiveAbortControllerRef.current?.abort();
+  }, []);
 
   // Sync state to refs for IntersectionObserver (avoids stale closures)
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
-  useEffect(() => { loadingRef.current = loading; }, [loading]);
+  useEffect(() => { loadingRef.current = loading || archivesRefreshing; }, [archivesRefreshing, loading]);
 
   // Infinite scroll: IntersectionObserver on bottom sentinel
   // Re-create observer whenever archives length or filter changes (doFetch gets fresh closure)
@@ -1130,7 +1184,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && archivesLenRef.current > 0 && hasMoreRef.current && !loadingRef.current) {
+        if (entry.isIntersecting && archivesLenRef.current > 0 && hasMoreRef.current && !archiveRequestInFlightRef.current) {
           doFetch(false);
         }
       },
@@ -1177,7 +1231,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     const firstFetch = !didFetchArchivesRef.current;
     didFetchArchivesRef.current = true;
     doFetch(true, { force: firstFetch });
-  }, [archiveBrowseMode, archivePage, doFetch, filter.query, filter.sortBy, filter.order, filter.active]);
+  }, [archiveBrowseMode, archivePage, archivePageSize, doFetch, filter.query, filter.sortBy, filter.order, filter.active, selectedCategory?.id]);
 
   // Handle popstate (browser back/forward)
   useEffect(() => {
@@ -1520,14 +1574,16 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   }, [archiveBrowseMode, archivePage, archivePageSize, archiveTotal, archives.length, filter.active, hasMore, loading, selectedCategory]);
 
   const archivePageCount = useMemo(() => getArchivePageCount(archiveTotal, archivePageSize), [archivePageSize, archiveTotal]);
-  const canGoPrevArchivePage = archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged && archivePage > 0 && !loading;
-  const canGoNextArchivePage = archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged && !loading && (Number.isFinite(Number(archiveTotal)) ? archivePage < archivePageCount - 1 : hasMore);
+  const archiveRequestBusy = loading || archivesRefreshing;
+  const canGoPrevArchivePage = archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged && archivePage > 0 && !archiveRequestBusy;
+  const canGoNextArchivePage = archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged && !archiveRequestBusy && (Number.isFinite(Number(archiveTotal)) ? archivePage < archivePageCount - 1 : hasMore);
   const goArchivePage = useCallback((page) => {
+    if (archiveRequestBusy) return;
     const nextPage = clampArchivePage(page, archiveTotal, archivePageSize);
     setArchivePage(nextPage);
     setArchivePageInput(String(nextPage + 1));
     pendingArchivesScrollRef.current = true;
-  }, [archivePageSize, archiveTotal]);
+  }, [archivePageSize, archiveRequestBusy, archiveTotal]);
   const submitArchivePageInput = useCallback(() => {
     const page = Math.max(1, Math.floor(Number(archivePageInput) || 1)) - 1;
     goArchivePage(page);
@@ -1561,9 +1617,6 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         ? prev
         : next
     ));
-    if (coldRestoreRef.current || !didFetchArchivesRef.current) {
-      doFetch(true, { force: true, filterOverride: next });
-    }
   }, []);
 
   useEffect(() => {
@@ -1616,8 +1669,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchivePage(0);
     setArchivePageInput('1');
     navigateHome({ replace: true });
-    doFetch(true, { force: true, filterOverride: cleared, pageIndex: 0, selectedCategoryOverride: nextCategory });
-  }, [doFetch, selectedCategory]);
+  }, [selectedCategory]);
 
   const clearFilter = () => {
     const cleared = { ...DEFAULT_FILTER };
@@ -1628,7 +1680,6 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchivePage(0);
     setArchivePageInput('1');
     navigateHome({ replace: true });
-    doFetch(true, { force: true, filterOverride: cleared, pageIndex: 0 });
   };
 
   const applyFilter = (q, s, o, categoryOverride = null) => {
@@ -1642,7 +1693,6 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchivePage(0);
     setArchivePageInput('1');
     navigateHome({ query: trimmedQuery, replace: true });
-    doFetch(true, { force: true, filterOverride: next, pageIndex: 0, selectedCategoryOverride: categoryOverride });
   };
 
   const handleSearch = () => {
@@ -1692,8 +1742,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchivePageInput('1');
     setStartOffset(0);
     setHasMore(true);
-    doFetch(true, { force: true, pageIndex: 0, modeOverride: next });
-  }, [doFetch]);
+  }, []);
 
   const ehFavoriteCookieValid = hasValidEhCookie(readerSettings.ehCookie || getEhCookie());
   const ehFavoriteSyncReady = ehFavoriteCookieValid && !!getWorkerUrl() && !!getSyncToken();
@@ -2327,8 +2376,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
         </div>
 
         {archives.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-sub)', fontSize: '14px' }}>
-            {selectedCategory?.id === UNTAGGED_CATEGORY_ID ? '没有无标签归档' : (filter.active ? '没有匹配的归档，请尝试其他筛选条件' : '仓库为空，请先在 LANraragi 中添加归档')}
+          <div role={archiveLoadError ? 'alert' : 'status'} aria-live="polite" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-sub)', fontSize: '14px' }}>
+            {archiveLoadError || (selectedCategory?.id === UNTAGGED_CATEGORY_ID ? '没有无标签归档' : (filter.active ? '没有匹配的归档，请尝试其他筛选条件' : '仓库为空，请先在 LANraragi 中添加归档'))}
+          </div>
+        )}
+
+        {archiveLoadError && archives.length > 0 && (
+          <div role="alert" aria-live="polite" style={{ textAlign: 'center', padding: '12px', color: 'var(--text-sub)', fontSize: '14px' }}>
+            {archiveLoadError}
           </div>
         )}
 
@@ -2346,16 +2401,17 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                   inputMode="numeric"
                   value={archivePageInput}
                   onChange={(event) => setArchivePageInput(event.target.value.replace(/[^\d]/g, ''))}
-                  onKeyDown={(event) => { if (event.key === 'Enter') submitArchivePageInput(); }}
+                  onKeyDown={(event) => { if (event.key === 'Enter' && !archiveRequestBusy) submitArchivePageInput(); }}
+                  disabled={archiveRequestBusy}
                 />
                 页
                 {Number.isFinite(Number(archiveTotal)) && <span className="archive-pagination-total">/ {archivePageCount}</span>}
               </span>
-              <button className="btn" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={submitArchivePageInput} disabled={loading}>跳转</button>
+              <button className="btn" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={submitArchivePageInput} disabled={archiveRequestBusy}>跳转</button>
               <button className="btn" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={() => goArchivePage(archivePage + 1)} disabled={!canGoNextArchivePage}>下一页</button>
             </div>
           ) : hasMore ? (
-            <button className="btn" style={{ padding: '10px 40px' }} onClick={() => doFetch(false)} disabled={loading}>
+            <button className="btn" style={{ padding: '10px 40px' }} onClick={() => doFetch(false)} disabled={loading || archivesRefreshing}>
               {loading ? '加载中...' : '加载更多'}
             </button>
           ) : (archives.length > 0 && (
