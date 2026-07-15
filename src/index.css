@@ -789,6 +789,73 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 18px;
+  max-height: 860px;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-card.is-worker-collapsed {
+  max-height: 520px;
+}
+
+.login-worker-section-content {
+  border-top: 1px solid var(--glass-border);
+  padding-top: 14px;
+}
+
+.login-worker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 4px 12px;
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.login-collapse-button {
+  display: flex;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-sub);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.18s ease;
+}
+
+.login-collapse-button:hover {
+  color: var(--text-main);
+  background: var(--surface-3);
+  transform: translateY(-1px);
+}
+
+.login-collapse-button:active {
+  transform: translateY(0);
+}
+
+.login-collapse-button svg {
+  transition: transform 0.3s ease;
+}
+
+.login-card.is-worker-collapsed .login-collapse-button svg {
+  transform: rotate(180deg);
+}
+
+.login-worker-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 180px;
+  overflow: hidden;
+  opacity: 1;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+
+.login-worker-fields.is-collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .login-title {

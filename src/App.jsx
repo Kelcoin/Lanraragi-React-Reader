@@ -40,6 +40,7 @@ export default function App() {
 
   const [loginNotice, setLoginNotice] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [workerCollapsed, setWorkerCollapsed] = useState(true);
   const [configTransfer, setConfigTransfer] = useState(null);
   
   useEffect(() => {
@@ -146,34 +147,46 @@ export default function App() {
       <>
         <div className="login-shell">
           <div className="login-stack">
-          <form onSubmit={handleConnect} className="glass-panel login-card">
+          <form onSubmit={handleConnect} className={`glass-panel login-card${workerCollapsed ? ' is-worker-collapsed' : ''}`}>
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
               <h2 className="login-title">配置 LANraragi</h2>
-              <div style={{ fontSize: '13px', color: 'var(--text-sub)' }}>连接到你的专属私人漫画库</div>
             </div>
             
             <div>
               <label className="field-label" htmlFor="server-url">服务器地址 *</label>
-              <input id="server-url" name="server-url" type="url" inputMode="url" autoComplete="url" spellCheck={false} className="input-glass" placeholder="如 http://192.168.1.10:3000" value={tempConfig.url} onChange={e => setTempConfig({...tempConfig, url: e.target.value})} required />
+              <input id="server-url" name="server-url" type="url" inputMode="url" autoComplete="url" spellCheck={false} className="input-glass" value={tempConfig.url} onChange={e => setTempConfig({...tempConfig, url: e.target.value})} required />
             </div>
             
             <div>
               <label className="field-label" htmlFor="api-key">API Key *</label>
-              <input id="api-key" name="api-key" type="password" autoComplete="off" spellCheck={false} className="input-glass" placeholder="在 LRR 设置页面获取" value={tempConfig.key} onChange={e => setTempConfig({...tempConfig, key: e.target.value})} required />
+              <input id="api-key" name="api-key" type="password" autoComplete="off" spellCheck={false} className="input-glass" value={tempConfig.key} onChange={e => setTempConfig({...tempConfig, key: e.target.value})} required />
             </div>
 
-            <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '14px' }}>
-              <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '12px', padding: '0 4px' }}>Worker 设置</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="login-worker-section-content">
+              <div className="login-worker-heading">
+                <span>Worker 设置</span>
+                <button
+                  type="button"
+                  className="login-collapse-button"
+                  onClick={() => setWorkerCollapsed(value => !value)}
+                  aria-expanded={!workerCollapsed}
+                  aria-controls="login-worker-fields"
+                  aria-label={workerCollapsed ? '展开 Worker 设置' : '收起 Worker 设置'}
+                >
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
+                    <path d="M6 15l6-6 6 6z" />
+                  </svg>
+                </button>
+              </div>
+              <div id="login-worker-fields" className={`login-worker-fields${workerCollapsed ? ' is-collapsed' : ''}`}>
                 <div>
                   <label className="field-label" htmlFor="worker-url">Cloudflare Worker 端点</label>
-                  <input id="worker-url" name="worker-url" type="url" inputMode="url" autoComplete="off" spellCheck={false} className="input-glass" placeholder="https://lrr-sync.example.workers.dev" value={tempConfig.workerUrl} onChange={e => setTempConfig({...tempConfig, workerUrl: e.target.value})} />
+                  <input id="worker-url" name="worker-url" type="url" inputMode="url" autoComplete="off" spellCheck={false} className="input-glass" value={tempConfig.workerUrl} onChange={e => setTempConfig({...tempConfig, workerUrl: e.target.value})} />
                 </div>
-
                 <div>
                   <label className="field-label" htmlFor="sync-token">访问 Token</label>
                   <span className="secret-input-shell" data-secret={tempConfig.syncToken}>
-                    <input id="sync-token" name="sync-token" type="text" autoComplete="off" spellCheck={false} className="input-glass secret-input" placeholder="需与 KV 空间 tokens 字段中的 Token 保持一致" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
+                    <input id="sync-token" name="sync-token" type="text" autoComplete="off" spellCheck={false} className="input-glass secret-input" value={tempConfig.syncToken} onChange={e => setTempConfig({...tempConfig, syncToken: e.target.value})} />
                   </span>
                 </div>
               </div>
@@ -188,7 +201,7 @@ export default function App() {
               </button>
             </div>
 
-            <button type="submit" className="btn" style={{ marginTop: '8px', padding: '12px', background: 'linear-gradient(180deg, rgba(88,183,255,0.36), rgba(88,183,255,0.18))', borderColor: 'rgba(141,216,255,0.58)' }} disabled={loginLoading}>
+            <button type="submit" className="btn" style={{ marginTop: '8px', padding: '12px', background: 'var(--accent)', borderColor: 'rgba(141,216,255,0.58)', color: '#fff' }} disabled={loginLoading}>
               {loginLoading ? '正在验证连接…' : '开始阅读'}
             </button>
 
