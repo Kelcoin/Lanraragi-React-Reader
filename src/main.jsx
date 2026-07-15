@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import { installDiagnostics } from './lib/diagnostics';
 import { markPwaUpdateReload } from './lib/sessionState';
+import { claimPwaReload, getServiceWorkerVersion } from './lib/pwaReloadGuard';
 import './index.css';
 
 installDiagnostics();
@@ -15,9 +16,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    const hadControllerBeforeRegistration = !!navigator.serviceWorker.controller;
+    let hasControlledPage = hadControllerBeforeRegistration;
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hasControlledPage) {
+        hasControlledPage = true;
+        return;
+      }
       if (refreshing) return;
+      const version = getServiceWorkerVersion(navigator.serviceWorker.controller?.scriptURL);
+      if (!claimPwaReload(sessionStorage, version)) return;
       refreshing = true;
       markPwaUpdateReload();
       window.location.reload();

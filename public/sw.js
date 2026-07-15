@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
           }
         })
       )
-    ).then(() => self.skipWaiting())
+    )
   );
 });
 

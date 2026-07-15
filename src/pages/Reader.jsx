@@ -270,6 +270,7 @@ const PageImage = React.forwardRef(({
   const [networkPending, setNetworkPending] = useState(false);
   const [allowNetworkFallback, setAllowNetworkFallback] = useState(() => !cacheOnly);
   const requestSeqRef = useRef(0);
+  const readyPageUrlRef = useRef(null);
   const imgRef = useRef(null);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [cropInsets, setCropInsets] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
@@ -288,8 +289,16 @@ const PageImage = React.forwardRef(({
   }, [fwdRef]);
 
   useLayoutEffect(() => {
+    const preserveReadySource = readyPageUrlRef.current === pageUrl;
+    if (preserveReadySource) {
+      setShowLoadingStatus(false);
+      setNetworkPending(false);
+      return undefined;
+    }
+
     let isMounted = true;
     const requestSeq = ++requestSeqRef.current;
+    readyPageUrlRef.current = null;
     setShowLoadingStatus(false);
     setNetworkPending(false);
     setLoadState(pageUrl ? 'loading' : 'idle');
@@ -346,6 +355,8 @@ const PageImage = React.forwardRef(({
 
   const handleMountedImageLoad = useCallback(async (event) => {
     const image = event.currentTarget;
+    if (image !== imgRef.current || image.src !== imgSrc) return;
+    readyPageUrlRef.current = pageUrl;
     if (typeof image.decode === 'function') {
       try { await image.decode(); } catch {}
     }
@@ -356,9 +367,10 @@ const PageImage = React.forwardRef(({
     }
     setLoadState('ready');
     onReady?.(pageIndex);
-  }, [cropBorders, imgSrc, onReady, pageIndex]);
+  }, [cropBorders, imgSrc, onReady, pageIndex, pageUrl]);
 
   const handleMountedImageError = useCallback(() => {
+    readyPageUrlRef.current = null;
     setLoadState('error');
     onError?.(pageIndex);
   }, [onError, pageIndex]);
@@ -3015,7 +3027,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 cacheOnly={assetCacheOnly}
                 priority={IMAGE_LOAD_PRIORITY.CRITICAL}
                 style={{ ...scaleStyle, ...transformStyle, maxWidth: settings.scaleMode === 'original' ? 'none' : '100%', maxHeight: settings.scaleMode === 'original' ? 'none' : '100%', borderRadius: '8px' }} splitWide={settings.splitWidePagesEnabled} cropBorders={settings.cropBordersEnabled}
-                loadingLabel={`正在切换到第 ${normalTargetIndex + 1} 页`}
+                loadingLabel={`正在加载第 ${normalTargetIndex + 1} 页`}
                 loadingHint="正在请求图像"
                 errorLabel={`第 ${normalTargetIndex + 1} 页加载失败`}
                 onLoadStart={handlePageVisualLoadStart}
@@ -3163,7 +3175,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                   }}
                 >
                   <div style={{ fontSize: 'clamp(24px, 4vw, 40px)', fontWeight: 800, color: '#f2f3f6', letterSpacing: '0.5px', textWrap: 'balance' }}>
-                    {`正在切换到第 ${currentIndex + 1} 页`}
+                    {`正在加载第 ${currentIndex + 1} 页`}
                   </div>
                   <div style={{ fontSize: 'clamp(16px, 2.6vw, 26px)', fontWeight: 600, color: 'rgba(223,225,232,0.62)' }}>
                     正在请求图像

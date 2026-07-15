@@ -279,7 +279,13 @@ async function ehProxy(request) {
       return json({ error: 'EH_EMPTY_RESPONSE', status: 200, detail: 'EH 返回了空白或极短页面' }, 403);
     }
 
-    if (!htmlText.includes('#cdiv') && !htmlText.includes('commentthread') && !htmlText.includes('gid')) {
+    const hasGalleryStructure = (
+      /id=["']cdiv["']/i.test(htmlText) ||
+      /class=["'][^"']*\bc1\b/i.test(htmlText) ||
+      /var\s+gid\s*=\s*\d+/i.test(htmlText) ||
+      /var\s+token\s*=\s*["'][^"']+["']/i.test(htmlText)
+    );
+    if (!hasGalleryStructure) {
       return json({
         error: 'EH_UNEXPECTED_PAGE',
         status: 200,

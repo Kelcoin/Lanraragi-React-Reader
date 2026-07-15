@@ -1702,7 +1702,17 @@ textarea:focus-visible,
 .eh-comment-card { background: var(--comment-card-bg); border: 1px solid var(--comment-card-border); border-left: 4px solid var(--comment-card-border); }
 .eh-comment-card.is-uploader { background: var(--comment-uploader-bg); border-color: var(--comment-uploader-border); }
 .eh-comment-input { background: var(--comment-input-bg); border: 1px solid var(--reader-control-border); color: var(--text-main); }
-.eh-comment-error { color: var(--comment-negative); background: color-mix(in srgb, var(--comment-negative) 10%, transparent); border: 1px solid color-mix(in srgb, var(--comment-negative) 34%, transparent); }
+.eh-comment-error {
+  color: var(--comment-negative);
+  background: color-mix(in srgb, var(--comment-negative) 10%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--comment-negative) 34%, transparent);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  padding: 14px 18px;
+  text-align: center;
+}
+.eh-comment-error-title { font-size: 14px; font-weight: 750; line-height: 1.45; text-wrap: balance; }
+.eh-comment-error-detail { margin-top: 5px; color: var(--text-sub); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; text-wrap: pretty; }
 .eh-vote-button { transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease; }
 
 .reader-toolbar-button {
