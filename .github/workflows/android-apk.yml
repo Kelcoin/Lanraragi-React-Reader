@@ -1,0 +1,142 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install web dependencies
+        run: npm install --package-lock=false --no-audit --no-fund
+
+      - name: Install temporary Capacitor dependencies
+        run: >-
+          npm install --no-save --package-lock=false --no-audit --no-fund
+          @capacitor/core@8.4.1 @capacitor/cli@8.4.1 @capacitor/android@8.4.1
+
+      - name: Build web app
+        env:
+          VITE_GIT_SHA: ${{ github.sha }}
+        run: npm run build
+
+      - name: Prepare temporary Android wrapper
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const config = {
+            appId: 'com.kelcoin.lanraragireader',
+            appName: 'LANraragi Reader',
+            webDir: 'dist',
+            backgroundColor: '#0f1115',
+            android: {
+              backgroundColor: '#0f1115',
+              allowMixedContent: true
+            },
+            server: {
+              cleartext: true
+            },
+            plugins: {
+              SystemBars: {
+                insetsHandling: 'css',
+                style: 'DARK',
+                hidden: false
+              }
+            }
+          };
+          fs.writeFileSync('capacitor.config.json', JSON.stringify(config, null, 2) + '\n');
+
+          const indexPath = path.join('dist', 'index.html');
+          let html = fs.readFileSync(indexPath, 'utf8');
+          const viewport = /(<meta\s+name="viewport"\s+content=")([^"]*)(")/;
+          if (!viewport.test(html)) throw new Error('viewport meta anchor missing');
+          html = html.replace(viewport, (_, start, value, end) =>
+            start + (value.includes('viewport-fit=cover') ? value : value + ', viewport-fit=cover') + end);
+          fs.writeFileSync(indexPath, html);
+
+          const assetDir = path.join('dist', 'assets');
+          const cssFiles = fs.readdirSync(assetDir).filter((name) => /^index-.*\.css$/.test(name));
+          if (cssFiles.length !== 1) throw new Error('expected one Vite CSS asset');
+          fs.appendFileSync(path.join(assetDir, cssFiles[0]), `
+          /* lrr-android-safe-area */
+          :root{--lrr-android-safe-top:var(--safe-area-inset-top,env(safe-area-inset-top,0px))}
+          html{background:#0f1115}
+          body{box-sizing:border-box;padding-top:var(--lrr-android-safe-top);min-height:100dvh}
+          .login-shell{min-height:calc(100dvh - var(--lrr-android-safe-top))!important}
+          .reader-root{margin-top:calc(-1 * var(--lrr-android-safe-top))}
+          .reader-toolbar{padding-top:calc(14px + var(--lrr-android-safe-top))!important}
+          `);
+
+          if (!fs.readFileSync(indexPath, 'utf8').includes('viewport-fit=cover')) {
+            throw new Error('viewport patch failed');
+          }
+          if (!fs.readFileSync(path.join(assetDir, cssFiles[0]), 'utf8').includes('--lrr-android-safe-top')) {
+            throw new Error('safe-area patch failed');
+          }
+          NODE
+
+          npx cap add android
+          npx cap sync android
+
+      - name: Verify temporary Android wrapper
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const config = JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8'));
+          const checks = [
+            ['webDir', config.webDir === 'dist'],
+            ['mixed content', config.android?.allowMixedContent === true],
+            ['cleartext', config.server?.cleartext === true],
+            ['CSS insets', config.plugins?.SystemBars?.insetsHandling === 'css'],
+            ['system bar style', config.plugins?.SystemBars?.style === 'DARK']
+          ];
+          for (const [name, valid] of checks) {
+            if (!valid) throw new Error('invalid ' + name);
+          }
+          const manifest = fs.readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8');
+          if (!manifest.includes('android.permission.INTERNET')) {
+            throw new Error('INTERNET permission missing');
+          }
+          NODE
+
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Resolve artifact name
+        id: artifact
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: lanraragi-reader-${{ steps.artifact.outputs.short_sha }}-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
