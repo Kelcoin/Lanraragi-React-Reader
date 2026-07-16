@@ -61,10 +61,14 @@ test('wide archive cards reserve two grid tracks without dense backfill', () => 
   assert.match(css, /\.archive-grid\s*>\s*\.archive-card-wrap\.is-wide\s*>\s*\.archive-card-shell\s*\{[^}]*width:\s*100%\s*!important;/s);
 });
 
-test('archive title height follows font size and leaves WebView rounding room', () => {
+test('archive title adapts spacing inside a fixed vertical budget', () => {
   const card = read('src/components/ArchiveCard.jsx');
-  assert.match(card, /lineHeight:\s*1\.45,\s*height:\s*'calc\(2\.9em \+ 2px\)'/);
-  assert.doesNotMatch(card, /height:\s*'36\.4px'/);
+  assert.match(card, /const ARCHIVE_TITLE_LAYOUTS = \[\s*\{ gap: 12, lineHeight: 1\.45 \},\s*\{ gap: 8, lineHeight: 1\.32 \},\s*\{ gap: 4, lineHeight: 1\.18 \},\s*\];/s);
+  assert.match(card, /const ARCHIVE_TITLE_VERTICAL_BUDGET = 51\.7;/);
+  assert.match(card, /const ARCHIVE_TITLE_SAFETY_PX = 3;/);
+  assert.match(card, /height:\s*`\$\{ARCHIVE_TITLE_VERTICAL_BUDGET - titleLayout\.gap\}px`/);
+  assert.match(card, /if \(lines\.length >= 2 && titleLayoutIndex === 0\)/);
+  assert.match(card, /lastVisibleLineBottom \+ ARCHIVE_TITLE_SAFETY_PX > titleBox\.bottom/);
 });
 
 test('configuration transfer warning and settings layers stay concise and isolated', () => {
