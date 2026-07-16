@@ -6,8 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Readoshi</h1>
-<p align="center"><strong>A LANraragi Reader</strong></p>
+<h1 align="center">Readoshi <sub><sup>A LANraragi Reader</sup></sub></h1>
 
 Readoshi 是一个面向 [LANraragi](https://github.com/Difegue/LANraragi) 的现代阅读器前端，支持 PWA、标签翻译、分类浏览、阅读历史、智能推荐、归档上传、元数据编辑、E-Hentai 评论、重复归档检测和沉浸式阅读。
 
@@ -309,12 +308,12 @@ E-Hentai 评论区和同步删除 E-Hentai 收藏夹需要合法 E-Hentai Cookie
 Worker KV 会保存：
 
 - `tokens`：允许访问受保护接口的 Token 列表。
-- `history:<token>`：对应 Token 的远端阅读历史和设置。
-- `watchlist:<token>`：对应 Token 的待看归档。
-- `dedupe:non-duplicates`：重复归档检测中标记为非重复的全局组合；读取、写入、导入和导出都必须携带合法 Token。
+- `history:<token>:<server-md5>`：对应 Token 和 LANraragi 服务器的远端阅读历史与设置。
+- `watchlist:<token>:<server-md5>`：对应 Token 和 LANraragi 服务器的待看归档。
+- `dedupe:<token>:<server-md5>:non-duplicates`：对应 Token 和 LANraragi 服务器的非重复归档组合。
 - `stats:requests`：Worker 请求计数。
 
-同步数据使用 schema v2：历史项只保存 `id`、`page`、`time`，待看项只保存 `id`、`addedAt`。Worker 在读取或写入旧数据时会自动移除标题、标签、页数等冗余元数据并回写新格式；前端根据 arcid 从 LANraragi 获取展示元数据，确认归档不存在时自动清理对应记录。
+`server-md5` 是规范化 LANraragi 地址的 MD5，不会在 KV 键中保存明文服务器地址。同步数据使用 schema v3：历史项只保存 `id`、`page`、`time`，待看项只保存 `id`、`addedAt`，删除操作通过带时间戳的 `deleted` 墓碑同步。Worker 首次访问对应作用域时会认领并迁移旧版 Token 键或全局去重键；同时会移除标题、标签、页数等冗余元数据。前端根据 arcid 从 LANraragi 获取展示元数据，确认归档不存在时自动清理对应记录。
 
 Worker 的 `history_retention_days` 控制历史记录保留时间。Worker 会按记录时间清理超过该天数的历史，不再使用固定条数作为历史上限；同步请求失败时前端保留本地状态并显示离线提示。
 

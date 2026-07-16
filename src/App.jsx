@@ -116,7 +116,7 @@ export default function App() {
       setSyncToken(tempConfig.syncToken);
       setSavedConfig({ url: tempConfig.url, key: tempConfig.key });
     } catch (err) {
-      setLoginNotice({ type: 'error', text: err.message || '无法连接到服务器，请检查地址和 API Key 是否正确，以及 LRR 服务是否在运行' });
+      setLoginNotice({ type: 'error', text: err.message || '无法连接到服务器，请检查 LANraragi 地址和 LANraragi API Key 是否正确，以及 LANraragi 服务是否在运行' });
     } finally {
       setLoginLoading(false);
     }
@@ -160,17 +160,19 @@ export default function App() {
         <div className="login-shell">
           <div className="login-stack">
           <form onSubmit={handleConnect} className={`glass-panel login-card${workerCollapsed ? ' is-worker-collapsed' : ''}`}>
-            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-              <h2 className="login-title">配置 LANraragi</h2>
+            <div className="login-brand-lockup">
+              <img className="login-brand-logo is-dark" src="/logo-white.png" alt="" aria-hidden="true" />
+              <img className="login-brand-logo is-light" src="/logo-black.png" alt="" aria-hidden="true" />
+              <h2 className="login-title">Readoshi</h2>
             </div>
             
             <div>
-              <label className="field-label" htmlFor="server-url">服务器地址 *</label>
+              <label className="field-label" htmlFor="server-url">LANraragi 地址 *</label>
               <input id="server-url" name="server-url" type="url" inputMode="url" autoComplete="url" spellCheck={false} className="input-glass" value={tempConfig.url} onChange={e => setTempConfig({...tempConfig, url: e.target.value})} required />
             </div>
             
             <div>
-              <label className="field-label" htmlFor="api-key">API Key *</label>
+              <label className="field-label" htmlFor="api-key">LANraragi API Key *</label>
               <input id="api-key" name="api-key" type="password" autoComplete="off" spellCheck={false} className="input-glass" value={tempConfig.key} onChange={e => setTempConfig({...tempConfig, key: e.target.value})} required />
             </div>
 

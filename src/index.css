@@ -630,6 +630,25 @@ textarea:focus-visible,
   min-width: 0;
 }
 
+.home-brand-logo {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.home-brand-logo.is-light {
+  display: none;
+}
+
+:root[data-theme="light"] .home-brand-logo.is-dark {
+  display: none;
+}
+
+:root[data-theme="light"] .home-brand-logo.is-light {
+  display: block;
+}
+
 .archive-toolbar-summary > span {
   white-space: nowrap;
 }
@@ -732,6 +751,11 @@ textarea:focus-visible,
   .home-brand-title {
     margin: 0 !important;
     font-size: 18px !important;
+  }
+
+  .home-brand-logo {
+    width: 30px;
+    height: 30px;
   }
 
   .home-project-name {
@@ -858,8 +882,36 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
+.login-brand-lockup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 58px;
+  margin-bottom: 8px;
+}
+
+.login-brand-logo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.login-brand-logo.is-light {
+  display: none;
+}
+
+:root[data-theme="light"] .login-brand-logo.is-dark {
+  display: none;
+}
+
+:root[data-theme="light"] .login-brand-logo.is-light {
+  display: block;
+}
+
 .login-title {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 26px;
   line-height: 1.18;
   letter-spacing: 0;
@@ -2321,6 +2373,16 @@ textarea:focus-visible,
 
   .login-title {
     font-size: 23px;
+  }
+
+  .login-brand-lockup {
+    min-height: 48px;
+    gap: 12px;
+  }
+
+  .login-brand-logo {
+    width: 48px;
+    height: 48px;
   }
 
   .settings-panel-scroll {

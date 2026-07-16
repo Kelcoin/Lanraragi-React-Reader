@@ -1852,8 +1852,10 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     <div style={{ padding: isNarrow ? '16px 10px' : '24px 20px', maxWidth: '1680px', margin: '0 auto' }}>
       <div className="home-topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', marginBottom: '32px', flexWrap: 'wrap' }}>
         <div className="home-brand">
-          <h1 className="home-brand-title" translate="no" style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span className="home-project-name">Readoshi</span>
+          <h1 className="home-brand-title" translate="no" aria-label="Readoshi" style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img className="home-brand-logo is-dark" src="/logo-white.png" alt="" aria-hidden="true" />
+            <img className="home-brand-logo is-light" src="/logo-black.png" alt="" aria-hidden="true" />
+            <span className="home-project-name" aria-hidden="true">Readoshi</span>
             {serverOnline !== null && (
               <button
                 type="button"
