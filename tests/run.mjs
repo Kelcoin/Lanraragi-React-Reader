@@ -4,6 +4,7 @@ import './minion.test.mjs';
 import './body-scroll-lock.test.mjs';
 import './worker-contract.test.mjs';
 import './regression-contracts.test.mjs';
+import './archive-layout.test.mjs';
 import './worker-behavior.test.mjs';
 import './icon-assets.test.mjs';
 import './app-version.test.mjs';

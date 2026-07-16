@@ -38,14 +38,15 @@ export function getArchivePageAfterResize(page, oldSize, newSize) {
   return Math.floor(getArchivePageStart(page, oldSize) / safeNewSize);
 }
 
-export function getLastArchiveRowCentering(containerRect, itemRects, tolerance = 2) {
+export function getArchiveRowCentering(containerRect, itemRects, columnCount, tolerance = 2) {
   if (!containerRect || !Array.isArray(itemRects) || itemRects.length === 0) {
-    return { indexes: [], offset: 0, translations: [] };
+    return { translations: [] };
   }
+  const columns = Math.max(1, Math.floor(Number(columnCount) || 1));
   const usableItems = itemRects
     .map((rect, index) => ({ rect, index }))
     .filter(({ rect }) => rect && Number.isFinite(rect.top) && Number.isFinite(rect.left) && Number.isFinite(rect.right));
-  if (usableItems.length === 0) return { indexes: [], offset: 0, translations: [] };
+  if (usableItems.length === 0) return { translations: [] };
 
   const containerCenter = containerRect.left + containerRect.width / 2;
   const rows = [];
@@ -56,41 +57,48 @@ export function getLastArchiveRowCentering(containerRect, itemRects, tolerance =
   });
   rows.sort((a, b) => a.top - b.top);
 
-  const lastRow = rows.at(-1).items;
-  const rowsToCenter = [lastRow];
-  if (lastRow.length === 1 && lastRow[0].rect.isWide) {
-    for (let index = rows.length - 2; index >= 0; index--) {
-      const row = rows[index].items;
-      if (row.length !== 1 || !row[0].rect.isWide) break;
-      rowsToCenter.unshift(row);
-    }
-  }
-
-  const translations = rowsToCenter.flatMap((row) => {
-    const groupLeft = Math.min(...row.map(({ rect }) => rect.left));
-    const groupRight = Math.max(...row.map(({ rect }) => rect.right));
+  const translations = rows.flatMap(({ items }) => {
+    const occupiedColumns = items.reduce(
+      (total, { rect }) => total + Math.max(1, Math.min(columns, Math.floor(Number(rect.span) || 1))),
+      0,
+    );
+    if (occupiedColumns >= columns) return [];
+    const groupLeft = Math.min(...items.map(({ rect }) => rect.left));
+    const groupRight = Math.max(...items.map(({ rect }) => rect.right));
     const offset = Math.round(containerCenter - (groupLeft + groupRight) / 2);
-    return row.map(({ index }) => ({ index, offset }));
+    return items.map(({ index }) => ({ index, offset }));
   });
-  const lastOffset = translations.at(-1)?.offset || 0;
-
-  return {
-    indexes: lastRow.map(({ index }) => index),
-    offset: lastOffset,
-    translations,
-  };
+  return { translations };
 }
 
-export function observeLastArchiveRowCentering(grid) {
+function getGridColumnCount(grid) {
+  const template = getComputedStyle(grid).gridTemplateColumns;
+  if (!template || template === 'none') return 1;
+  return Math.max(1, template.trim().split(/\s+/).length);
+}
+
+function getGridItemSpan(item, columns) {
+  const style = getComputedStyle(item);
+  const start = Number.parseInt(style.gridColumnStart, 10);
+  const end = Number.parseInt(style.gridColumnEnd, 10);
+  if (Number.isFinite(start) && end === -1) return Math.max(1, columns - start + 1);
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) return Math.min(columns, end - start);
+  const span = `${style.gridColumnStart} ${style.gridColumnEnd}`.match(/span\s+(\d+)/)?.[1];
+  if (span) return Math.min(columns, Math.max(1, Number.parseInt(span, 10)));
+  return item.classList.contains('is-wide') ? Math.min(2, columns) : 1;
+}
+
+export function observeArchiveGridLayout(grid) {
   if (!grid) return () => {};
 
   let frame = 0;
-  const centerLastRow = () => {
+  const layoutRows = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const items = Array.from(grid.children);
       items.forEach((item) => { item.style.translate = ''; });
-      const { translations } = getLastArchiveRowCentering(
+      const columns = getGridColumnCount(grid);
+      const { translations } = getArchiveRowCentering(
         grid.getBoundingClientRect(),
         items.map((item) => {
           const rect = item.getBoundingClientRect();
@@ -98,9 +106,10 @@ export function observeLastArchiveRowCentering(grid) {
             left: rect.left,
             right: rect.right,
             top: rect.top,
-            isWide: item.classList.contains('is-wide'),
+            span: getGridItemSpan(item, columns),
           };
         }),
+        columns,
       );
       translations.forEach(({ index, offset }) => {
         if (Math.abs(offset) >= 1) items[index].style.translate = `${offset}px 0`;
@@ -108,16 +117,14 @@ export function observeLastArchiveRowCentering(grid) {
     });
   };
 
-  const resizeObserver = new ResizeObserver(centerLastRow);
+  const resizeObserver = new ResizeObserver(layoutRows);
   const mutationObserver = new MutationObserver((records) => {
     if (records.some((record) => record.type === 'childList' && record.target === grid)) {
-      mutationObserver.disconnect();
-      mutationObserver.observe(grid, { childList: true });
       Array.from(grid.children).forEach((item) => {
         mutationObserver.observe(item, { attributes: true, attributeFilter: ['class'] });
       });
     }
-    centerLastRow();
+    layoutRows();
   });
 
   resizeObserver.observe(grid);
@@ -125,14 +132,14 @@ export function observeLastArchiveRowCentering(grid) {
   Array.from(grid.children).forEach((item) => {
     mutationObserver.observe(item, { attributes: true, attributeFilter: ['class'] });
   });
-  window.addEventListener('resize', centerLastRow);
-  centerLastRow();
+  window.addEventListener('resize', layoutRows);
+  layoutRows();
 
   return () => {
     cancelAnimationFrame(frame);
     resizeObserver.disconnect();
     mutationObserver.disconnect();
-    window.removeEventListener('resize', centerLastRow);
+    window.removeEventListener('resize', layoutRows);
     Array.from(grid.children).forEach((item) => { item.style.translate = ''; });
   };
 }

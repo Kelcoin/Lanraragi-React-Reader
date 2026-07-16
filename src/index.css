@@ -2056,7 +2056,7 @@ textarea:focus-visible,
 
 .archive-grid {
   display: grid;
-  grid-auto-flow: row;
+  grid-auto-flow: row dense;
   justify-items: center;
   opacity: 1;
   transform: scale(1);

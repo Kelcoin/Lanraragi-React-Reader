@@ -10,6 +10,7 @@ import { getEhCookie, getEhFavoriteDeleteSync, hasValidEhCookie, setEhFavoriteDe
 import { acquireBodyScrollLock } from '../lib/bodyScrollLock';
 import { deleteArchiveWithFavoriteSync } from '../lib/archiveDeletion';
 import ArchiveCard from '../components/ArchiveCard';
+import ArchiveGrid from '../components/ArchiveGrid';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TextInputDialog from '../components/TextInputDialog';
@@ -28,7 +29,7 @@ import { claimColdRestoreRoute, consumeHomeNavigationSnapshot, getBootState, loa
 import { getStoredServerInfo, loadServerInfo } from '../lib/serverInfoCache';
 import { useHorizontalScroller } from '../lib/horizontalScroller';
 import { navigateDeduplicate, navigateHistory, navigateHome, navigateToMetadata, navigateUpload, navigateWatchlist } from '../lib/navigation';
-import { ARCHIVE_BROWSE_MODES, ARCHIVE_PAGE_SIZE, clampArchivePage, getArchivePageAfterResize, getArchivePageCount, getArchivePageStart, getSmartArchivePageSize, observeLastArchiveRowCentering } from '../lib/archivePagination';
+import { ARCHIVE_BROWSE_MODES, ARCHIVE_PAGE_SIZE, clampArchivePage, getArchivePageAfterResize, getArchivePageCount, getArchivePageStart, getSmartArchivePageSize } from '../lib/archivePagination';
 import { reduceArchiveRefreshPhase } from '../lib/archiveRefreshMotion';
 import { ARCHIVE_PROGRESS_VISIBILITY, normalizeArchiveProgressVisibility, shouldShowArchiveProgress } from '../lib/archiveProgress';
 
@@ -1008,10 +1009,6 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, [cropCover]);
-
-  useLayoutEffect(() => {
-    return observeLastArchiveRowCentering(gridRef.current);
-  }, [archiveBrowseMode, archivePage, archivePageSize, archives.length, isNarrow]);
 
   const archiveSideEffectsRef = useRef({ exitColdRestoreMode, scrollToArchives });
   archiveSideEffectsRef.current = { exitColdRestoreMode, scrollToArchives };
@@ -2353,7 +2350,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           })()}
         </div>
 
-        <div ref={gridRef} className={`archive-grid${archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged ? ' is-paged' : ''}`} data-refresh-phase={archiveRefreshPhase} aria-busy={archivesRefreshing} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
+        <ArchiveGrid ref={gridRef} className={archiveBrowseMode === ARCHIVE_BROWSE_MODES.paged ? 'is-paged' : ''} data-refresh-phase={archiveRefreshPhase} aria-busy={archivesRefreshing} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
           {archives.length === 0 && loading ? (
             Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={`gsk-${i}`} showProgress={showGlobalArchiveProgress} />)
           ) : (
@@ -2361,7 +2358,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               <ArchiveCard key={arc.arcid || arc.id} className={watchlistIds.has(arc.arcid || arc.id) ? 'watchlist-card' : undefined} archive={arc} onClick={() => handleSelectArchive(arc.arcid)} onArchiveContextMenu={handleOpenArchiveMenu} showProgressBar={showGlobalArchiveProgress} reserveProgressSpace={reserveGlobalProgressSpace} noCrop={!cropCover} cacheOnly={coldRestoreRef.current} selectionMode={archiveSelectionMode} selected={selectedArchiveIds.has(arc.arcid || arc.id)} onSelectToggle={toggleArchiveSelection} />
             ))
           )}
-        </div>
+        </ArchiveGrid>
 
         {archives.length === 0 && !loading && (
           <div role={archiveLoadError ? 'alert' : 'status'} aria-live="polite" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-sub)', fontSize: '14px' }}>

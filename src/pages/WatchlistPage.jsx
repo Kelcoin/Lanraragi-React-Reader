@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
+import ArchiveGrid from '../components/ArchiveGrid';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
 import { navigateToMetadata } from '../lib/navigation';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -11,7 +12,6 @@ import { archiveMatchesSearch } from '../lib/archiveSearch';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
 import { getWatchlist, getWatchlistAutoRemoveIds, loadWatchlistState, mergeWatchlistProgress, removeWatchlistItems } from '../lib/watchlist';
 import { ARCHIVE_PROGRESS_VISIBILITY, readArchiveProgressVisibility, shouldShowArchiveProgress } from '../lib/archiveProgress';
-import { observeLastArchiveRowCentering } from '../lib/archivePagination';
 
 function HeaderGlyph() {
   return <HomeSectionGlyph name="watchlist" size={24} color={getSectionGlyphColor('watchlist')} />;
@@ -68,8 +68,6 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
   const autoRemoveIds = useMemo(() => getWatchlistAutoRemoveIds(itemsWithProgress), [itemsWithProgress]);
   const filteredItems = useMemo(() => itemsWithProgress.filter((item) => archiveMatchesSearch(item, query)), [itemsWithProgress, query]);
   const selectedCount = selectedIds.size;
-
-  useLayoutEffect(() => observeLastArchiveRowCentering(gridRef.current), [cropCover, filteredItems.length, isNarrow]);
 
   useEffect(() => {
     if (autoRemoveIds.length > 0) removeWatchlistItems(autoRemoveIds).catch(() => {});
@@ -247,7 +245,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
           </div>
 
           {filteredItems.length > 0 ? (
-            <div ref={gridRef} className="archive-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
+            <ArchiveGrid ref={gridRef} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
               {filteredItems.map((item) => {
                 const selected = selectedIds.has(item.id);
                 return (
@@ -302,7 +300,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
                   />
                 );
               })}
-            </div>
+            </ArchiveGrid>
           ) : (
             <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-sub)', fontSize: '14px' }}>
               {items.length > 0 ? '没有匹配的待看归档' : '暂无待看归档'}

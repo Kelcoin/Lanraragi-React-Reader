@@ -694,24 +694,33 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
         )}
         {/* 标题 */}
         <div
-          ref={titleRef}
           onClick={(e) => {
             if (suppressClickAfterLongPress(e)) return;
             handleTitleClick(e);
           }}
           style={{
-            fontSize: '13px',
             marginTop: `${titleLayout.gap + (reserveEmptyProgressSpace && !(pageInfo || dateAddedStr) ? 5 : 0)}px`,
             overflow: 'hidden',
-            display: '-webkit-box',
-            WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-            lineHeight: titleLayout.lineHeight,
             height: `${ARCHIVE_TITLE_VERTICAL_BUDGET - titleLayout.gap}px`,
-          ...(isMobile ? { cursor: 'pointer' } : {}),
+            ...(isMobile ? { cursor: 'pointer' } : {}),
           }}
-          className="archive-title"
+          className="archive-title-slot"
         >
-          {archive.title}
+          <div
+            ref={titleRef}
+            className="archive-title"
+            style={{
+              fontSize: '13px',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              lineHeight: titleLayout.lineHeight,
+              height: `${13 * titleLayout.lineHeight * 2 + ARCHIVE_TITLE_SAFETY_PX}px`,
+            }}
+          >
+            {archive.title}
+          </div>
         </div>
 
         {(pageInfo || dateAddedStr) && (
