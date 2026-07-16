@@ -61,6 +61,12 @@ test('wide archive cards reserve two grid tracks without dense backfill', () => 
   assert.match(css, /\.archive-grid\s*>\s*\.archive-card-wrap\.is-wide\s*>\s*\.archive-card-shell\s*\{[^}]*width:\s*100%\s*!important;/s);
 });
 
+test('archive title height follows font size and leaves WebView rounding room', () => {
+  const card = read('src/components/ArchiveCard.jsx');
+  assert.match(card, /lineHeight:\s*1\.45,\s*height:\s*'calc\(2\.9em \+ 2px\)'/);
+  assert.doesNotMatch(card, /height:\s*'36\.4px'/);
+});
+
 test('configuration transfer warning and settings layers stay concise and isolated', () => {
   const dialog = read('src/components/ConfigTransferDialog.jsx');
   const home = read('src/pages/Home.jsx');
