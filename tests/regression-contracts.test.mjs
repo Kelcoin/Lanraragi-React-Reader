@@ -98,3 +98,14 @@ test('home carousels use compact shared vertical padding', () => {
   assert.match(home, /function getHomeCarouselPadding\(isNarrow\)\s*\{\s*return `12px \$\{isNarrow \? 14 : 20\}px 20px`;/s);
   assert.doesNotMatch(home, /HOME_CAROUSEL_GLOW_PADDING|44px/);
 });
+
+test('watchlist glow stays inside compact carousel padding', () => {
+  const css = read('src/index.css');
+  const glowStart = css.indexOf('.watchlist-card:not(.watchlist-card-plain) .archive-card-shell::before');
+  const glowEnd = css.indexOf('.archive-cover-image', glowStart);
+  const glowCss = css.slice(glowStart, glowEnd);
+
+  assert.match(glowCss, /0 0 6px[\s\S]*0 0 10px/);
+  assert.match(glowCss, /:hover[\s\S]*0 0 8px[\s\S]*0 0 12px/);
+  assert.doesNotMatch(glowCss, /0 0 (?:14|16|18|20|30|34|38|42)px/);
+});

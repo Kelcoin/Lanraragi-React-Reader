@@ -1864,32 +1864,32 @@ textarea:focus-visible,
   border-radius: inherit;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 48%, transparent),
-    0 0 14px color-mix(in srgb, var(--watchlist-glow) 42%, transparent),
-    0 0 30px color-mix(in srgb, var(--watchlist-glow) 30%, transparent);
+    0 0 6px color-mix(in srgb, var(--watchlist-glow) 42%, transparent),
+    0 0 10px color-mix(in srgb, var(--watchlist-glow) 30%, transparent);
   opacity: 0.96;
 }
 
 :root[data-theme="light"] .watchlist-card:not(.watchlist-card-plain) .archive-card-shell::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 62%, transparent),
-    0 0 16px color-mix(in srgb, var(--watchlist-glow) 56%, transparent),
-    0 0 34px color-mix(in srgb, var(--watchlist-glow) 38%, transparent);
+    0 0 6px color-mix(in srgb, var(--watchlist-glow) 56%, transparent),
+    0 0 10px color-mix(in srgb, var(--watchlist-glow) 38%, transparent);
   opacity: 1;
 }
 
 .watchlist-card:not(.watchlist-card-plain):hover .archive-card-shell::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 64%, transparent),
-    0 0 18px color-mix(in srgb, var(--watchlist-glow) 52%, transparent),
-    0 0 38px color-mix(in srgb, var(--watchlist-glow) 36%, transparent);
+    0 0 8px color-mix(in srgb, var(--watchlist-glow) 52%, transparent),
+    0 0 12px color-mix(in srgb, var(--watchlist-glow) 36%, transparent);
   opacity: 1;
 }
 
 :root[data-theme="light"] .watchlist-card:not(.watchlist-card-plain):hover .archive-card-shell::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--watchlist-glow) 72%, transparent),
-    0 0 20px color-mix(in srgb, var(--watchlist-glow) 64%, transparent),
-    0 0 42px color-mix(in srgb, var(--watchlist-glow) 44%, transparent);
+    0 0 8px color-mix(in srgb, var(--watchlist-glow) 64%, transparent),
+    0 0 12px color-mix(in srgb, var(--watchlist-glow) 44%, transparent);
 }
 
 .archive-cover-image {
