@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
+import ArchiveGrid from '../components/ArchiveGrid';
 import ArchiveContextMenu from '../components/ArchiveContextMenu';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ArchiveSearchBox from '../components/ArchiveSearchBox';
@@ -406,7 +407,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
                     </div>
                   </div>
 
-                  <div className="archive-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
+                  <ArchiveGrid style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: isNarrow ? '10px' : '16px', '--archive-grid-half-gap': isNarrow ? '5px' : '8px' }}>
                     {group.items.map((h) => {
                       const selected = selectedIds.has(h.id);
                       return (
@@ -459,7 +460,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
                         />
                       );
                     })}
-                  </div>
+                  </ArchiveGrid>
 
                 </div>
               ))}

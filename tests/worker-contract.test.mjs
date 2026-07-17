@@ -4,7 +4,6 @@ import test from 'node:test';
 
 const worker = fs.readFileSync(new URL('../worker.js', import.meta.url), 'utf8');
 const client = fs.readFileSync(new URL('../src/lib/worker-kv.js', import.meta.url), 'utf8');
-const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 test('Worker accepts sync tokens from headers only', () => {
   assert.doesNotMatch(worker, /searchParams\.get\(['"]token['"]\)/);
@@ -33,9 +32,11 @@ test('sync mutations serialize and retain timestamp tombstones', () => {
   assert.doesNotMatch(worker, /\.slice\(0, 200\)/);
 });
 
-test('Worker has no remote update checker and fallback matches package version', () => {
-  const appRelease = worker.match(/const APP_RELEASE\s*=\s*['"]([^'"]+)['"]/);
-  assert.equal(appRelease?.[1], pkg.version);
-  assert.match(worker, /const FALLBACK_APP_VERSION\s*=\s*`v\$\{APP_RELEASE\}`/);
+test('Worker owns an independent SemVer and has no remote update checker', () => {
+  const workerVersion = worker.match(/const WORKER_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  assert.match(workerVersion?.[1] || '', /^\d+\.\d+\.\d+$/);
+  assert.equal(workerVersion?.[1], '1.0.0');
+  assert.match(worker, /const workerVersion = `v\$\{WORKER_VERSION\}`/);
+  assert.doesNotMatch(worker, /APP_RELEASE|APP_VERSION|FALLBACK_APP_VERSION/);
   assert.doesNotMatch(worker, /WORKER_RELEASE|WORKER_UPDATE_BRANCH|checkWorkerUpdate|getWorkerSourceUrl|raw\.githubusercontent\.com\/Kelcoin\/Readoshi\/.+\/worker\.js/);
 });

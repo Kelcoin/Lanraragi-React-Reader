@@ -11,6 +11,13 @@ import { scopedCacheKey } from '../lib/configScope';
 
 const NAMESPACE_COLORS = NAMESPACE_COLORS_MAP;
 const archiveAspectRatioCache = new Map();
+const ARCHIVE_TITLE_LAYOUTS = [
+  { gap: 12, lineHeight: 1.45 },
+  { gap: 8, lineHeight: 1.32 },
+  { gap: 4, lineHeight: 1.18 },
+];
+const ARCHIVE_TITLE_VERTICAL_BUDGET = 51.7;
+const ARCHIVE_TITLE_SAFETY_PX = 3;
 
 function calculatePanelPosition(cardRect, panelHeight, pointerY = null) {
   const panelWidth = 320;
@@ -98,6 +105,8 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const aspectCacheKey = scopedCacheKey(`aspect:${id}`);
   const [aspectRatio, setAspectRatio] = useState(() => archiveAspectRatioCache.get(aspectCacheKey) ?? null);
   const cardRef = useRef(null);
+  const titleRef = useRef(null);
+  const titleMeasurementKeyRef = useRef('');
   const panelRef = useRef(null);
   const imgRef = useRef(null);
   const leaveTimerRef = useRef(null);
@@ -108,6 +117,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const longPressTriggeredRef = useRef(false);
   const pointerStartRef = useRef(null);
   const hoverPointerYRef = useRef(null);
+  const [titleLayoutIndex, setTitleLayoutIndex] = useState(0);
 
   useEffect(() => {
     if (!cacheOnly) {
@@ -170,6 +180,53 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
 
   const isWide = noCrop && aspectRatio != null && aspectRatio > 1.0;
   const baseMetaFontSize = isMobile ? 10.5 : 11;
+  const titleLayout = ARCHIVE_TITLE_LAYOUTS[titleLayoutIndex];
+
+  useLayoutEffect(() => {
+    const element = titleRef.current;
+    if (!element) return;
+
+    const measurementKey = `${archive.title}\u0000${element.clientWidth}`;
+    if (titleMeasurementKeyRef.current !== measurementKey) {
+      titleMeasurementKeyRef.current = measurementKey;
+      if (titleLayoutIndex !== 0) {
+        setTitleLayoutIndex(0);
+        return;
+      }
+    }
+
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lines = [];
+    for (const rect of range.getClientRects()) {
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      const line = lines.find((item) => Math.abs(item.top - rect.top) < 1);
+      if (line) line.bottom = Math.max(line.bottom, rect.bottom);
+      else lines.push({ top: rect.top, bottom: rect.bottom });
+    }
+    range.detach?.();
+    lines.sort((a, b) => a.top - b.top);
+
+    if (lines.length < 2) {
+      if (titleLayoutIndex !== 0) setTitleLayoutIndex(0);
+      return;
+    }
+
+    // Android WebView can paint below the geometry reported by Range.
+    if (lines.length >= 2 && titleLayoutIndex === 0) {
+      setTitleLayoutIndex(1);
+      return;
+    }
+
+    const titleBox = element.getBoundingClientRect();
+    const lastVisibleLineBottom = lines[1].bottom;
+    if (
+      lastVisibleLineBottom + ARCHIVE_TITLE_SAFETY_PX > titleBox.bottom
+      && titleLayoutIndex < ARCHIVE_TITLE_LAYOUTS.length - 1
+    ) {
+      setTitleLayoutIndex((index) => index + 1);
+    }
+  }, [archive.title, isWide, titleLayoutIndex]);
 
   const rememberAspectRatio = useCallback((next) => {
     if (!Number.isFinite(next) || next <= 0) return;
@@ -642,16 +699,28 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             handleTitleClick(e);
           }}
           style={{
-            fontSize: '13px', marginTop: reserveEmptyProgressSpace && !(pageInfo || dateAddedStr) ? '17px' : '12px',
+            marginTop: `${titleLayout.gap + (reserveEmptyProgressSpace && !(pageInfo || dateAddedStr) ? 5 : 0)}px`,
             overflow: 'hidden',
-            display: '-webkit-box',
-            WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-            lineHeight: '1.4', height: '36.4px',
-          ...(isMobile ? { cursor: 'pointer' } : {}),
+            height: `${ARCHIVE_TITLE_VERTICAL_BUDGET - titleLayout.gap}px`,
+            ...(isMobile ? { cursor: 'pointer' } : {}),
           }}
-          className="archive-title"
+          className="archive-title-slot"
         >
-          {archive.title}
+          <div
+            ref={titleRef}
+            className="archive-title"
+            style={{
+              fontSize: '13px',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              lineHeight: titleLayout.lineHeight,
+              height: `${13 * titleLayout.lineHeight * 2 + ARCHIVE_TITLE_SAFETY_PX}px`,
+            }}
+          >
+            {archive.title}
+          </div>
         </div>
 
         {(pageInfo || dateAddedStr) && (

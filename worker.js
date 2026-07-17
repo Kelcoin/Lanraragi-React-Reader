@@ -13,8 +13,7 @@ const DEDUPE_KEY_PREFIX = 'dedupe:';
 const SYNC_SCHEMA_VERSION = 3;
 const PROJECT_NAME = 'Readoshi';
 const PROJECT_URL = 'https://github.com/Kelcoin/Readoshi';
-const APP_RELEASE = '1.3.0';
-const FALLBACK_APP_VERSION = `v${APP_RELEASE}`;
+const WORKER_VERSION = '1.0.0';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -1167,9 +1166,7 @@ async function statusPage(request) {
       ? `<div class="stat"><span class="label">Token 认证</span><span class="ok">已启用 (${tokenCount} 个)</span></div>`
       : `<div class="stat"><span class="label">⚠ Token 认证</span><span class="err">已启用但 KV tokens 为空，所有受保护接口都会拒绝</span></div>`)
     : `<div class="stat"><span class="label">Token 认证</span><span class="err">强制启用</span></div>`;
-  const appVersion = typeof APP_VERSION !== 'undefined' && APP_VERSION
-    ? String(APP_VERSION)
-    : FALLBACK_APP_VERSION;
+  const workerVersion = `v${WORKER_VERSION}`;
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -1283,7 +1280,7 @@ async function statusPage(request) {
 
   <div class="footer">
     <span>${PROJECT_NAME} · Cloudflare Worker</span>
-    <span>${appVersion}</span>
+    <span>${workerVersion}</span>
     <a href="${PROJECT_URL}" target="_blank" rel="noreferrer">GitHub</a>
   </div>
 </div>
