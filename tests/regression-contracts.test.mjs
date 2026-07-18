@@ -195,6 +195,7 @@ test('archive grids combine dense backfill with shared row centering', () => {
 
 test('archive title uses one cross-platform two-line geometry contract', () => {
   const card = read('src/components/ArchiveCard.jsx');
+  const workflow = read('.github/workflows/mobile-build.yml');
   assert.match(card, /const ARCHIVE_TITLE_GAP = 8;/);
   assert.match(card, /const ARCHIVE_TITLE_FONT_SIZE = 13;/);
   assert.match(card, /const ARCHIVE_TITLE_LINE_HEIGHT = 1\.5;/);
@@ -207,6 +208,7 @@ test('archive title uses one cross-platform two-line geometry contract', () => {
   assert.match(card, /boxSizing:\s*'content-box'/);
   assert.doesNotMatch(card, /document\.createRange\(\)/);
   assert.doesNotMatch(card, /titleLayoutIndex|titleMeasurementKeyRef|fontRevision/);
+  assert.match(workflow, /getWebView\(\)\.getSettings\(\)\.setTextZoom\(100\)/);
 });
 
 test('mobile settings respect safe areas and reveal animations release compositor layers', () => {
