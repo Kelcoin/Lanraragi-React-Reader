@@ -360,7 +360,7 @@ export default function Recommendations({ currentArchive }) {
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      prompt('复制归档链接:', url);
+      prompt('复制档案链接:', url);
     }
   }, []);
 
@@ -513,7 +513,7 @@ export default function Recommendations({ currentArchive }) {
     />
     <ConfirmDialog
       open={!!archiveDeleteTarget}
-      title="确认删除归档"
+      title="确认删除档案"
       message={archiveDeleteTarget ? `将从 LANraragi 中删除“${archiveDeleteTarget.title || archiveDeleteTarget.arcid || archiveDeleteTarget.id}”。此操作不可撤销。` : ''}
       confirmLabel="确认删除"
       cancelLabel="取消"

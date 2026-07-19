@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useReducer } from 'react';
 import { flushSync } from 'react-dom';
-import { encodeApiKey, lrrApi, waitForMinionJob } from '../lib/api';
+import { encodeApiKey, lrrApi } from '../lib/api';
 import { flushHistorySync, getHistory, saveHistory, getHideRead, removeHistoryItem, loadHistoryState } from '../lib/history';
 import { clampProgressPage } from '../lib/historyProgressCache';
 import { getWatchlist, loadWatchlistState, mergeWatchlistProgress, removeWatchlistItem } from '../lib/watchlist';
 import { getReaderArchiveListMeta } from '../lib/readerArchiveList';
 import { isArchiveMissingError } from '../lib/historyMaintenance';
 import { translateTag, categorizeTags } from '../lib/tags';
-import { getCachedImage, getImage, deleteImageKeys, IMAGE_LOAD_PRIORITY } from '../lib/imageCache';
+import { getCachedImage, getImage, primeImage, deleteImageKeys, IMAGE_LOAD_PRIORITY } from '../lib/imageCache';
+import { createImageDecodeQueue } from '../lib/imageLoadQueue';
 import { DEFAULT_READER_SETTINGS, READER_SETTINGS_KEY, normalizeReaderSettings, prepareReaderSettingsForArchiveChange } from '../lib/readerSettings';
 import {
   clearArchiveProgressMarker,
@@ -28,9 +29,10 @@ import {
   getContentLanguage,
   isIosWebKitPlatform,
   isReaderMobileViewport,
+  resolvePageIndicatorPlacement,
   resolveReaderToolbarMode,
 } from '../lib/readerUiState';
-import { computeContainedImageRect, rectsOverlap } from '../lib/pageIndicatorLayout';
+import { computeContainedImageRect } from '../lib/pageIndicatorLayout';
 import { classifyWebtoonSeams, compareSeamPixels, sampleImageSeam } from '../lib/webtoonDetector';
 import { detectImageBorderInsets } from '../lib/readerImageTransform';
 import { getWorkerUrl, getSyncToken } from '../lib/worker-config';
@@ -43,6 +45,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import CustomSelect from '../components/CustomSelect';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { HomeSectionGlyph, NamespaceGlyph, stripDecoratedLabel, ToolbarGlyph } from '../components/AppGlyphs';
+import ArchivePageThumbnail from '../components/ArchivePageThumbnail';
 import { acquireBodyScrollLock } from '../lib/bodyScrollLock';
 import {
   buildReaderSpreads,
@@ -52,10 +55,50 @@ import {
   getAdjacentSpreadLocation,
   getSpreadProgressPage,
   getImmersiveSpreadGeometry,
+  getReaderDecodeWindow,
   hasWebtoonTag,
   isWidePageSize,
   resolveAutoReadingLayout,
 } from '../lib/readerLayout';
+
+const readerImageDecodeQueue = createImageDecodeQueue();
+
+async function waitForImageTask(promise, image, src, signal) {
+  let abortHandler;
+  const abortPromise = new Promise((_, reject) => {
+    abortHandler = () => {
+      if ((image.currentSrc || image.src) === src) image.removeAttribute('src');
+      reject(new DOMException('Image decode cancelled', 'AbortError'));
+    };
+    signal?.addEventListener('abort', abortHandler, { once: true });
+  });
+  try {
+    await Promise.race([promise, abortPromise]);
+  } finally {
+    if (abortHandler) signal?.removeEventListener('abort', abortHandler);
+  }
+}
+
+async function decodeImageElement(image, src, signal) {
+  if (signal?.aborted) throw new DOMException('Image decode cancelled', 'AbortError');
+  image.src = src;
+  if (typeof image.decode === 'function') {
+    try {
+      await waitForImageTask(image.decode(), image, src, signal);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+    }
+  }
+  if (!image.complete || !image.naturalWidth) {
+    const loadPromise = new Promise((resolve, reject) => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', reject, { once: true });
+    });
+    await waitForImageTask(loadPromise, image, src, signal);
+  }
+  if (signal?.aborted) throw new DOMException('Image decode cancelled', 'AbortError');
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error('Image decode failed');
+}
 
 // ===== Authenticated Image Component =====
 const getConfiguredServerUrl = () => {
@@ -129,155 +172,7 @@ async function resolvePageImageSource(pageUrl, {
 const DRAWER_COLUMNS = 3;
 const DRAWER_GAP = 12;
 const DRAWER_OVERSCAN_ROWS = 4;
-const drawerMinionWaits = new Map();
-
-function waitForDrawerMinion(job) {
-  const jobId = Number(job?.job ?? job);
-  if (!Number.isFinite(jobId) || jobId <= 0) return Promise.resolve(null);
-  if (!drawerMinionWaits.has(jobId)) {
-    const task = waitForMinionJob(jobId, { timeoutMs: 2 * 60 * 1000 })
-      .finally(() => drawerMinionWaits.delete(jobId));
-    drawerMinionWaits.set(jobId, task);
-  }
-  return drawerMinionWaits.get(jobId);
-}
-const DrawerThumb = ({ archiveId, pageIndex, active, cacheOnly = false, eager = false }) => {
-  const [src, setSrc] = useState(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
-  const [allowNetworkFallback, setAllowNetworkFallback] = useState(() => !cacheOnly);
-  const [thumbState, setThumbState] = useState('idle');
-  const [retryTick, setRetryTick] = useState(0);
-  const wrapRef = useRef(null);
-  const retryTimerRef = useRef(null);
-
-  useEffect(() => {
-    if (!cacheOnly) {
-      setAllowNetworkFallback(true);
-    }
-  }, [cacheOnly]);
-
-  useEffect(() => {
-    if (!active) { setShouldLoad(false); return; }
-    if (eager) { setShouldLoad(true); return undefined; }
-    const el = wrapRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) { setShouldLoad(true); io.disconnect(); }
-    }, { rootMargin: '140px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [active, eager]);
-
-  useEffect(() => {
-    let m = true;
-    if (!shouldLoad || !archiveId || typeof pageIndex !== 'number') return;
-
-    const clearRetry = () => {
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
-    };
-
-    const scheduleRetry = () => {
-      clearRetry();
-      retryTimerRef.current = setTimeout(() => {
-        if (!m) return;
-        setRetryTick((tick) => tick + 1);
-      }, 900);
-    };
-
-    (async () => {
-      const page = pageIndex + 1;
-      const thumbKey = `thumb:drawer:v3:${archiveId}:${page}`;
-      try {
-        setThumbState((state) => state === 'queued' ? state : 'loading');
-        let blobUrl = cacheOnly && !allowNetworkFallback
-          ? await getCachedImage(thumbKey)
-          : await getCachedImage(thumbKey);
-        if (!blobUrl && !(cacheOnly && !allowNetworkFallback)) {
-          blobUrl = await getImage(thumbKey, async () => {
-            let result = await lrrApi.getArchiveThumbnail(archiveId, { page, noFallback: true });
-            if (result.status === 202 && result.job) {
-              await waitForDrawerMinion(result.job);
-              result = await lrrApi.getArchiveThumbnail(archiveId, { page, noFallback: true });
-            }
-            return result.status !== 202 ? result.blob : null;
-          }, { priority: IMAGE_LOAD_PRIORITY.NORMAL });
-        }
-        if (!m) return;
-        if (blobUrl) {
-          setSrc(blobUrl);
-          setThumbState('ready');
-          clearRetry();
-          return;
-        }
-        if (cacheOnly && !allowNetworkFallback) {
-          setAllowNetworkFallback(true);
-          return;
-        }
-        setSrc(null);
-        setThumbState('queued');
-        scheduleRetry();
-      } catch {
-        if (!m) return;
-        if (cacheOnly && !allowNetworkFallback) {
-          setAllowNetworkFallback(true);
-          return;
-        }
-        setSrc(null);
-        setThumbState('error');
-        clearRetry();
-      }
-    })();
-    return () => {
-      m = false;
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
-    };
-  }, [allowNetworkFallback, archiveId, cacheOnly, pageIndex, retryTick, shouldLoad]);
-
-  if (!src) {
-    return (
-      <div
-        ref={wrapRef}
-        style={{
-          width: '100%',
-          height: '100%',
-          background: thumbState === 'error' ? 'color-mix(in srgb, var(--danger) 22%, transparent)' : 'var(--reader-skeleton-base)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: thumbState === 'error' ? 'rgba(255,196,196,0.82)' : 'rgba(222,231,243,0.52)',
-          fontSize: '10px',
-          letterSpacing: '0.2px',
-          textAlign: 'center',
-          padding: '6px',
-          boxSizing: 'border-box',
-        }}
-      >
-        {thumbState === 'error' ? '缩略图失败' : thumbState === 'queued' ? '生成中' : ''}
-      </div>
-    );
-  }
-  return (
-    <img
-      ref={wrapRef}
-      src={src}
-      alt=""
-      onLoad={() => setThumbState('ready')}
-      onError={() => {
-        setSrc(null);
-        setThumbState('error');
-      }}
-      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-      loading="eager"
-    />
-  );
-};
-
+const DRAWER_TRANSITION_MS = 300;
 const PageImage = React.forwardRef(({
   pageUrl,
   pageIndex,
@@ -296,6 +191,7 @@ const PageImage = React.forwardRef(({
   onNaturalSize,
   cropBorders = false,
   priority = IMAGE_LOAD_PRIORITY.NORMAL,
+  serializedDecode = false,
 }, fwdRef) => {
   const [imgSrc, setImgSrc] = useState(null);
   const [loadState, setLoadState] = useState(() => (pageUrl ? 'loading' : 'idle'));
@@ -351,6 +247,7 @@ const PageImage = React.forwardRef(({
     }
 
     let isMounted = true;
+    let decodeTicket = null;
     const requestSeq = ++requestSeqRef.current;
     readyPageUrlRef.current = null;
     setShowLoadingStatus(false);
@@ -374,6 +271,26 @@ const PageImage = React.forwardRef(({
         if (!isMounted || requestSeq !== requestSeqRef.current) return;
         setNetworkPending(false);
         if (src) {
+          if (serializedDecode) {
+            decodeTicket = readerImageDecodeQueue.schedule(`page:${pageUrl}:${requestSeq}`, async (signal) => {
+              if (!isMounted || requestSeq !== requestSeqRef.current) return;
+              setImgSrc(src);
+              const image = imgRef.current;
+              if (!image) return;
+              await decodeImageElement(image, src, signal);
+              if (!isMounted || requestSeq !== requestSeqRef.current || image !== imgRef.current) return;
+              readyPageUrlRef.current = pageUrl;
+              setNaturalSize({ width: image.naturalWidth, height: image.naturalHeight });
+              onNaturalSize?.(pageIndex, { width: image.naturalWidth, height: image.naturalHeight });
+              if (cropBorders) {
+                try { setCropInsets(detectImageBorderInsets(image)); } catch {}
+              }
+              setLoadState('ready');
+              onReady?.(pageIndex);
+            }, priority);
+            await decodeTicket.promise;
+            return;
+          }
           setImgSrc(src);
           return;
         }
@@ -383,8 +300,9 @@ const PageImage = React.forwardRef(({
         }
         setLoadState('error');
         onError?.(pageIndex);
-      } catch {
+      } catch (error) {
         if (!isMounted || requestSeq !== requestSeqRef.current) return;
+        if (error?.name === 'AbortError') return;
         setNetworkPending(false);
         if (cacheOnly && !allowNetworkFallback) {
           setAllowNetworkFallback(true);
@@ -395,8 +313,11 @@ const PageImage = React.forwardRef(({
       }
     })();
 
-    return () => { isMounted = false; };
-  }, [allowNetworkFallback, cacheOnly, onError, onLoadStart, onReady, pageIndex, pageUrl, priority]);
+    return () => {
+      isMounted = false;
+      decodeTicket?.cancel();
+    };
+  }, [allowNetworkFallback, cacheOnly, cropBorders, onError, onLoadStart, onNaturalSize, onReady, pageIndex, pageUrl, priority, serializedDecode]);
 
   useEffect(() => {
     if (!networkPending) {
@@ -408,6 +329,7 @@ const PageImage = React.forwardRef(({
   }, [networkPending, pageUrl]);
 
   const handleMountedImageLoad = useCallback(async (event) => {
+    if (serializedDecode) return;
     const image = event.currentTarget;
     if (image !== imgRef.current || image.src !== imgSrc) return;
     readyPageUrlRef.current = pageUrl;
@@ -422,7 +344,7 @@ const PageImage = React.forwardRef(({
     }
     setLoadState('ready');
     onReady?.(pageIndex);
-  }, [cropBorders, imgSrc, onNaturalSize, onReady, pageIndex, pageUrl]);
+  }, [cropBorders, imgSrc, onNaturalSize, onReady, pageIndex, pageUrl, serializedDecode]);
 
   const handleMountedImageError = useCallback(() => {
     readyPageUrlRef.current = null;
@@ -659,10 +581,10 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
       <div ref={contentRef} style={{ padding: '18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px', borderBottom: '1px solid var(--reader-control-border)', paddingBottom: '8px' }}>
         <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600 }}>{title}</span>
-        <div className="reader-panel-tabs" role="group" aria-label="归档列表类型">
+        <div className="reader-panel-tabs" role="group" aria-label="档案列表类型">
           {[
             ['history', '阅读历史'],
-            ['watchlist', '待看归档'],
+            ['watchlist', '待看档案'],
             ['random', '随机漫游'],
           ].map(([value, label]) => (
             <button
@@ -754,7 +676,7 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
                     fontSize: '16px', lineHeight: 1, padding: '2px 4px', borderRadius: '4px', flexShrink: 0,
                   }}
                   title={type === 'watchlist' ? '移出待看' : '删除历史'}
-                  aria-label={type === 'watchlist' ? `将${item.title || '归档'}移出待看` : `删除${item.title || '归档'}的历史记录`}
+                  aria-label={type === 'watchlist' ? `将${item.title || '档案'}移出待看` : `删除${item.title || '档案'}的历史记录`}
                 >
                   ×
                 </button>}
@@ -771,7 +693,7 @@ function ReaderArchiveListPanel({ type, title, items, emptyMessage, cacheOnly, o
               type="button"
               className="reader-panel-view-more"
               onClick={onViewMore}
-              aria-label={`查看全部${type === 'history' ? '阅读历史' : '待看归档'}，共 ${panelWindow.total} 本`}
+              aria-label={`查看全部${type === 'history' ? '阅读历史' : '待看档案'}，共 ${panelWindow.total} 本`}
             >
               查看更多（共 {panelWindow.total} 本）
             </button>
@@ -808,32 +730,17 @@ function formatArchiveSize(value) {
   return `${formatted}\u00a0${units[unitIndex]}`;
 }
 
-async function primePageImage(pageUrl, priority = IMAGE_LOAD_PRIORITY.PRELOAD) {
+async function primePageBlob(pageUrl, priority = IMAGE_LOAD_PRIORITY.PRELOAD) {
   if (!pageUrl) return false;
   const normalized = toLocalUrl(pageUrl);
   const key = localStorage.getItem('lrr_api_key') || '';
-  const src = await getImage(normalized, async () => {
+  return primeImage(normalized, async () => {
     const headers = {};
     if (key) headers.Authorization = `Bearer ${encodeApiKey(key)}`;
     const res = await fetch(normalized, { headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.blob();
   }, { priority });
-  if (!src) return false;
-
-  const image = new Image();
-  image.src = src;
-  if (typeof image.decode === 'function') {
-    await image.decode();
-  } else if (!image.complete) {
-    await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = reject;
-    });
-    image.onload = null;
-    image.onerror = null;
-  }
-  return image.naturalWidth > 0;
 }
 
 function getNormalReaderFrameHeight(isMobile) {
@@ -1160,8 +1067,8 @@ function ReaderStageSlot({ status, onRetry }) {
   if (status === 'empty') {
     return (
       <div className="reader-stage-slot" role="status" aria-live="polite">
-        <strong>归档没有可显示页面</strong>
-        <span>请检查归档内容或重新提取页面。</span>
+        <strong>档案没有可显示页面</strong>
+        <span>请检查档案内容或重新提取页面。</span>
       </div>
     );
   }
@@ -1219,6 +1126,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const [showUI, setShowUI] = useState(true);
   const [showHeader, setShowHeader] = useState(() => readerSnapshot?.showHeader ?? true);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [drawerSide, setDrawerSide] = useState('right');
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showArchivePanel, setShowArchivePanel] = useState(false);
   const [immersiveControlsSide, setImmersiveControlsSide] = useState(null);
@@ -1237,7 +1145,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const [historyEntries, setHistoryEntries] = useState(() => getHistory());
   const [watchlistEntries, setWatchlistEntries] = useState(() => getWatchlist());
   const [hideRead] = useState(getHideRead);
-  const [isMobile, setIsMobile] = useState(() => isReaderMobileViewport(window.innerWidth, 'ontouchstart' in window));
+  const [isMobile, setIsMobile] = useState(() => isReaderMobileViewport(window.innerWidth));
   const { toolbarRef, mode: toolbarMode } = useReaderToolbarMode(isMobile, viewMode);
   const toolbarCompact = toolbarMode !== 'full';
   const isIosWebKit = useMemo(() => isIosWebKitPlatform(
@@ -1333,6 +1241,11 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   }), [effectiveReadingLayout, pages.length, settings.direction, splitWidePages]);
   const currentSpreadIndex = findSpreadIndex(readerSpreads, { pageIndex: currentIndex, splitPart });
   const currentSpread = readerSpreads[Math.max(0, currentSpreadIndex)] || [];
+  const currentSpreadPageIndices = new Set(currentSpread.map((unit) => unit.pageIndex));
+  const adjacentDecodePageIndices = [...new Set(
+    getReaderDecodeWindow(readerSpreads, currentSpreadIndex)
+      .flatMap((spread) => spread.map((unit) => unit.pageIndex)),
+  )].filter((pageIndex) => !currentSpreadPageIndices.has(pageIndex));
   const snapshotSaveTimerRef = useRef(null);
 
   const [preloadInput, setPreloadInput] = useState(String(settings.preloadCount));
@@ -1836,6 +1749,51 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const indicatorRef = useRef(null);
   const resizeObserverRef = useRef(null);
   const drawerGridRef = useRef(null);
+  const drawerTransitionTimerRef = useRef(null);
+  const drawerOpenFrameRef = useRef(null);
+
+  const clearDrawerTransition = useCallback(() => {
+    if (drawerTransitionTimerRef.current) {
+      clearTimeout(drawerTransitionTimerRef.current);
+      drawerTransitionTimerRef.current = null;
+    }
+    if (drawerOpenFrameRef.current) {
+      cancelAnimationFrame(drawerOpenFrameRef.current);
+      drawerOpenFrameRef.current = null;
+    }
+  }, []);
+
+  const openDrawerAfterSideChange = useCallback((side) => {
+    setDrawerSide(side);
+    drawerOpenFrameRef.current = requestAnimationFrame(() => setShowDrawer(true));
+  }, []);
+
+  const closeThumbnailDrawer = useCallback(() => {
+    clearDrawerTransition();
+    setShowDrawer(false);
+  }, [clearDrawerTransition]);
+
+  const openThumbnailDrawer = useCallback((side = 'right') => {
+    clearDrawerTransition();
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) {
+      setDrawerSide(side);
+      setShowDrawer(true);
+      return;
+    }
+    if (showDrawer && drawerSide === side) return;
+    if (showDrawer) {
+      setShowDrawer(false);
+      drawerTransitionTimerRef.current = setTimeout(() => {
+        drawerTransitionTimerRef.current = null;
+        openDrawerAfterSideChange(side);
+      }, DRAWER_TRANSITION_MS);
+      return;
+    }
+    openDrawerAfterSideChange(side);
+  }, [clearDrawerTransition, drawerSide, openDrawerAfterSideChange, showDrawer]);
+
+  useEffect(() => () => clearDrawerTransition(), [clearDrawerTransition]);
 
   const releaseReaderImageElements = useCallback(() => {
     [imgLeftRef.current, imgLeftSecondRef.current, imgCurrRef.current, imgCurrSecondRef.current, imgRightRef.current, imgRightSecondRef.current].forEach((image) => {
@@ -1851,6 +1809,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
   useLayoutEffect(() => () => {
     immersiveLoadSeqRef.current += 1;
+    readerImageDecodeQueue.cancelAll();
     if (swipeRAF.current) {
       cancelAnimationFrame(swipeRAF.current);
       swipeRAF.current = null;
@@ -1864,7 +1823,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
   // ===== isMobile detection =====
   useEffect(() => {
-    const check = () => setIsMobile(isReaderMobileViewport(window.innerWidth, 'ontouchstart' in window));
+    const check = () => setIsMobile(isReaderMobileViewport(window.innerWidth));
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
@@ -1880,6 +1839,8 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     immersiveLoadSeqRef.current = loadSeq;
     let alive = true;
     let resizeObserver = null;
+    let decodeSequence = 0;
+    const decodeTickets = [];
     const key = localStorage.getItem('lrr_api_key') || '';
 
     const applyUnitStyle = (image, unit) => {
@@ -1958,15 +1919,13 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
           }
           image.style.display = 'none';
           delete image.dataset.pageIndex;
-          image.src = src;
-          if (typeof image.decode === 'function') {
-            try { await image.decode(); } catch {}
-          } else if (!image.complete) {
-            await new Promise((resolve, reject) => {
-              image.onload = resolve;
-              image.onerror = reject;
-            });
-          }
+          const decodeTicket = readerImageDecodeQueue.schedule(
+            `immersive:${loadSeq}:${unitKey}:${decodeSequence++}`,
+            (signal) => decodeImageElement(image, src, signal),
+            priority,
+          );
+          decodeTickets.push(decodeTicket);
+          await decodeTicket.promise;
           if (!alive || loadSeq !== immersiveLoadSeqRef.current || image !== imgRef.current) return false;
           if (!image.naturalWidth || !image.naturalHeight) throw new Error('Image decode failed');
           image.dataset.pageIndex = String(pageIndex);
@@ -2001,8 +1960,11 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     const l2r = settings.direction === 'ltr';
     const leftSpreadIndex = activeSpreadIndex + (l2r ? -1 : 1);
     const rightSpreadIndex = activeSpreadIndex + (l2r ? 1 : -1);
-    const leftSpread = readerSpreads[leftSpreadIndex] || [];
-    const rightSpread = readerSpreads[rightSpreadIndex] || [];
+    const decodeWindow = new Set(getReaderDecodeWindow(readerSpreads, activeSpreadIndex));
+    const leftSpreadCandidate = readerSpreads[leftSpreadIndex] || [];
+    const rightSpreadCandidate = readerSpreads[rightSpreadIndex] || [];
+    const leftSpread = decodeWindow.has(leftSpreadCandidate) ? leftSpreadCandidate : [];
+    const rightSpread = decodeWindow.has(rightSpreadCandidate) ? rightSpreadCandidate : [];
     const styleEntries = [
       [imgCurrRef, activeSpread[0]],
       [imgCurrSecondRef, activeSpread[1]],
@@ -2052,6 +2014,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     });
     return () => {
       alive = false;
+      decodeTickets.forEach((ticket) => ticket.cancel());
       resizeObserver?.disconnect();
     };
   }, [assetCacheOnly, currentIndex, currentSpreadIndex, pages, readerSpreads, settings.direction, settings.rotateWidePagesEnabled, viewMode, webtoonActive]);
@@ -2070,7 +2033,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const pageIndicatorModeRef = useRef('pinned');
   const pageNumTimerRef = useRef(null);
   const pageIndicatorTransientActiveRef = useRef(false);
+  const pageNumVisibleRef = useRef(true);
   pageIndicatorModeRef.current = pageIndicatorMode;
+  pageNumVisibleRef.current = pageNumVisible;
 
 
   const showTransientPageIndicator = useCallback((duration = 1400) => {
@@ -2092,35 +2057,24 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
 
     const imageRect = imgEl.getBoundingClientRect();
     const renderRect = computeContainedImageRect(imageRect, imgEl.naturalWidth, imgEl.naturalHeight);
-    const doesOverlap = (rect) => rectsOverlap(renderRect, rect, 6);
     const measuredRect = indicator.getBoundingClientRect();
     const loweredShift = isMobile ? 10 : 8;
-    const currentShift = pageIndicatorModeRef.current === 'lowered' ? loweredShift : 0;
+    const currentShift = pageIndicatorModeRef.current === 'lowered'
+      ? loweredShift
+      : (pageNumVisibleRef.current ? 0 : 12);
     const baseRect = {
       left: measuredRect.left,
       right: measuredRect.right,
       top: measuredRect.top - currentShift,
       bottom: measuredRect.bottom - currentShift,
     };
-    if (!doesOverlap(baseRect)) {
+    const previousPlacement = pageNumVisibleRef.current ? pageIndicatorModeRef.current : 'hidden';
+    const placement = resolvePageIndicatorPlacement(previousPlacement, renderRect, baseRect, loweredShift);
+    if (placement === 'pinned' || placement === 'lowered') {
       if (pageNumTimerRef.current) clearTimeout(pageNumTimerRef.current);
       pageNumTimerRef.current = null;
       pageIndicatorTransientActiveRef.current = false;
-      setPageIndicatorMode('pinned');
-      setPageNumVisible(true);
-      return;
-    }
-
-    const loweredRect = {
-      ...baseRect,
-      top: baseRect.top + loweredShift,
-      bottom: baseRect.bottom + loweredShift,
-    };
-    if (!doesOverlap(loweredRect)) {
-      if (pageNumTimerRef.current) clearTimeout(pageNumTimerRef.current);
-      pageNumTimerRef.current = null;
-      pageIndicatorTransientActiveRef.current = false;
-      setPageIndicatorMode('lowered');
+      setPageIndicatorMode(placement);
       setPageNumVisible(true);
       return;
     }
@@ -2177,11 +2131,6 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       ro.observe(imgEl);
       imgEl.addEventListener('load', scheduleOverlapCheck);
     }
-    const indicatorEl = indicatorRef.current;
-    if (indicatorEl) {
-      ro.observe(indicatorEl);
-      indicatorEl.addEventListener('transitionend', scheduleOverlapCheck);
-    }
     window.addEventListener('resize', scheduleOverlapCheck, { passive: true });
     window.visualViewport?.addEventListener('resize', scheduleOverlapCheck, { passive: true });
     window.visualViewport?.addEventListener('scroll', scheduleOverlapCheck, { passive: true });
@@ -2193,7 +2142,6 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       ro.disconnect();
       if (overlapFrame) cancelAnimationFrame(overlapFrame);
       if (imgEl) imgEl.removeEventListener('load', scheduleOverlapCheck);
-      if (indicatorEl) indicatorEl.removeEventListener('transitionend', scheduleOverlapCheck);
       window.removeEventListener('resize', scheduleOverlapCheck);
       window.visualViewport?.removeEventListener('resize', scheduleOverlapCheck);
       window.visualViewport?.removeEventListener('scroll', scheduleOverlapCheck);
@@ -3065,9 +3013,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     historyItems: historyList,
     watchlistItems: watchlistWithProgress,
     randomItems: randomEntries,
-    historyEmptyMessage: hideRead && historyEntries.length > 0 ? '所有归档均已读完' : '暂无阅读历史',
-    watchlistEmptyMessage: '暂无待看归档',
-    randomEmptyMessage: randomEntriesLoading ? '正在获取随机归档…' : '暂无随机漫游结果',
+    historyEmptyMessage: hideRead && historyEntries.length > 0 ? '所有档案均已读完' : '暂无阅读历史',
+    watchlistEmptyMessage: '暂无待看档案',
+    randomEmptyMessage: randomEntriesLoading ? '正在获取随机档案…' : '暂无随机漫游结果',
     removeHistory: setHistoryDeleteTarget,
     removeWatchlist: handleRemoveWatchlist,
   });
@@ -3245,7 +3193,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
     const indices = getPreloadIndices();
     indices.slice(0, settings.preloadCount).forEach((idx, order) => {
       const pageUrl = pages[idx];
-      if (pageUrl) primePageImage(pageUrl, IMAGE_LOAD_PRIORITY.ADJACENT - order).catch(() => {});
+      if (pageUrl) primePageBlob(pageUrl, IMAGE_LOAD_PRIORITY.ADJACENT - order).catch(() => {});
     });
   }, [currentIndex, pageLoadPhase.status, pageLoadPhase.targetIndex, pages, settings.direction, settings.preloadCount]);
 
@@ -3483,7 +3431,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 </button>
               </>
             )}
-            <button className="reader-toolbar-button" disabled={!canNavigate} style={{ ...btnBase, opacity: canNavigate ? 1 : 0.45, cursor: canNavigate ? 'pointer' : 'not-allowed' }} onClick={() => { if (canNavigate) setShowDrawer(true); }} title="缩略面板" aria-label="缩略面板">
+            <button className="reader-toolbar-button" disabled={!canNavigate} style={{ ...btnBase, opacity: canNavigate ? 1 : 0.45, cursor: canNavigate ? 'pointer' : 'not-allowed' }} onClick={() => { if (canNavigate) openThumbnailDrawer('right'); }} title="缩略面板" aria-label="缩略面板">
               <ReaderToolbarButtonContent icon="grid" label="缩略面板" />
             </button>
           </div>
@@ -3501,7 +3449,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               zIndex: 9999,
               padding: '22px',
               borderRadius: '14px',
-              width: isMobile ? 'calc(100vw - 40px)' : '380px',
+              width: 'min(380px, calc(100vw - 40px))',
               maxHeight: '80vh',
               boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
               border: '1px solid var(--reader-control-border)',
@@ -3649,6 +3597,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                         cropSide={unit.cropSide}
                         rotateWide={settings.rotateWidePagesEnabled}
                         cropBorders={settings.cropBordersEnabled}
+                        serializedDecode
                         onNaturalSize={handlePageNaturalSize}
                         loadingLabel={`正在加载第 ${unit.pageIndex + 1} 页`}
                         loadingHint="正在请求图像"
@@ -3665,6 +3614,26 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                   status={renderState.manifest.status === 'error' ? 'error' : (renderState.manifest.status === 'ready' ? 'empty' : 'loading')}
                   onRetry={() => setBootstrapRetryToken((token) => token + 1)}
                 />
+              )}
+              {!webtoonActive && adjacentDecodePageIndices.length > 0 && (
+                <div
+                  aria-hidden="true"
+                  style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}
+                >
+                  {adjacentDecodePageIndices.map((pageIndex) => (
+                    <PageImage
+                      key={`decode-window:${pageIndex}`}
+                      pageUrl={pages[pageIndex]}
+                      pageIndex={pageIndex}
+                      isImmersive={false}
+                      cacheOnly={assetCacheOnly}
+                      priority={IMAGE_LOAD_PRIORITY.ADJACENT}
+                      serializedDecode
+                      onNaturalSize={handlePageNaturalSize}
+                      style={{ width: '1px', height: '1px' }}
+                    />
+                  ))}
+                </div>
               )}
             </div>
 
@@ -3761,7 +3730,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 <button type="button" className="reader-immersive-control-button" tabIndex={immersiveControlsSide === side ? 0 : -1} disabled={!canNavigate || coverSetting} onClick={() => { if (canNavigate && !coverSetting) handleSetCover(); revealImmersiveControls(side); }} title="设为封面" aria-label="设为封面">
                   <ToolbarGlyph name="cover" size={20} />
                 </button>
-                <button type="button" className="reader-immersive-control-button" tabIndex={immersiveControlsSide === side ? 0 : -1} disabled={!canNavigate} onClick={() => { if (canNavigate) setShowDrawer(true); hideImmersiveControls(); }} title="缩略面板" aria-label="缩略面板">
+                <button type="button" className="reader-immersive-control-button" tabIndex={immersiveControlsSide === side ? 0 : -1} disabled={!canNavigate} onClick={() => { if (canNavigate) openThumbnailDrawer(side); hideImmersiveControls(); }} title="缩略面板" aria-label="缩略面板">
                   <ToolbarGlyph name="grid" size={20} />
                 </button>
               </div>
@@ -3929,9 +3898,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 ref={indicatorRef}
                 style={{
                   position: 'fixed',
-                  bottom: pageIndicatorMode === 'lowered'
-                    ? `calc(env(safe-area-inset-bottom, 0px) + ${isMobile ? '6px' : '4px'})`
-                    : `calc(env(safe-area-inset-bottom, 0px) + ${isMobile ? '12px' : '8px'})`,
+                  bottom: `calc(env(safe-area-inset-bottom, 0px) + ${isMobile ? '12px' : '8px'})`,
                   left: isMobile ? '50%' : 'auto',
                   right: isMobile ? 'auto' : '20px',
                   padding: '4px 10px',
@@ -3945,9 +3912,9 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                   opacity: pageIndicatorShouldShow ? 1 : 0,
                   transform: pageIndicatorShouldShow
                     ? (isMobile
-                      ? `translateX(-50%) translateY(${pageIndicatorMode === 'lowered' ? '4px' : '0'}) scale(1)`
-                      : `translateY(${pageIndicatorMode === 'lowered' ? '4px' : '0'}) scale(1)`)
-                    : (isMobile ? 'translateX(-50%) translateY(12px) scale(0.92)' : 'translateY(12px) scale(0.92)'),
+                      ? `translateX(-50%) translateY(${pageIndicatorMode === 'lowered' ? '10px' : '0'})`
+                      : `translateY(${pageIndicatorMode === 'lowered' ? '8px' : '0'})`)
+                    : (isMobile ? 'translateX(-50%) translateY(12px)' : 'translateY(12px)'),
                   transition: 'opacity 0.28s ease, transform 0.32s cubic-bezier(0.22,1,0.36,1), bottom 0.28s cubic-bezier(0.22,1,0.36,1)',
                 }}
               >
@@ -3981,22 +3948,23 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       <div
         style={{
           position: 'fixed', inset: 0, zIndex: 200,
-          display: 'flex', justifyContent: 'flex-end',
+          display: 'flex', justifyContent: drawerSide === 'left' ? 'flex-start' : 'flex-end',
           pointerEvents: showDrawer ? 'auto' : 'none',
           background: showDrawer ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0)',
           backdropFilter: showDrawer ? 'blur(4px)' : 'blur(0px)',
           WebkitBackdropFilter: showDrawer ? 'blur(4px)' : 'blur(0px)',
           transition: 'background 0.25s ease, backdrop-filter 0.25s ease, -webkit-backdrop-filter 0.25s ease',
         }}
-        onClick={() => setShowDrawer(false)}
+        onClick={closeThumbnailDrawer}
         onWheel={(event) => event.stopPropagation()}
       >
         <div
           className="reader-panel-surface"
           style={{
             width: '100%', maxWidth: '420px', height: '100%', background: 'var(--reader-panel-bg)', padding: '24px',
-            display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
-            transform: showDrawer ? 'translateX(0)' : 'translateX(100%)',
+            display: 'flex', flexDirection: 'column',
+            boxShadow: drawerSide === 'left' ? '8px 0 32px rgba(0,0,0,0.5)' : '-8px 0 32px rgba(0,0,0,0.5)',
+            transform: showDrawer ? 'translateX(0)' : `translateX(${drawerSide === 'left' ? '-100%' : '100%'})`,
             transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
           }}
           onClick={(e) => e.stopPropagation()}
@@ -4004,7 +3972,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--reader-control-border)', paddingBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-              <h3 style={{ margin: 0, fontSize: '18px' }}>归档信息</h3>
+              <h3 style={{ margin: 0, fontSize: '18px' }}>档案信息</h3>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {hasArchiveReadingProgress(archive, historyEntries.find((item) => item.id === archiveId)?.page) && (
@@ -4015,7 +3983,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               <button className="reader-drawer-icon-button" onClick={() => navigateToMetadata(archiveId)} title="编辑元数据" aria-label="编辑元数据">
                 <ToolbarGlyph name="metadata" size={18} />
               </button>
-              <button className="reader-drawer-icon-button" onClick={() => setShowDrawer(false)} aria-label="关闭缩略面板" title="关闭缩略面板" style={{ fontSize: '20px' }}>
+              <button className="reader-drawer-icon-button" onClick={closeThumbnailDrawer} aria-label="关闭缩略面板" title="关闭缩略面板" style={{ fontSize: '20px' }}>
                 ✕
               </button>
             </div>
@@ -4125,7 +4093,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                   return (
                     <div
                       key={url}
-                      onClick={() => { commitPageTarget(idx, { showIndicator: viewMode === 'immersive' }); setShowDrawer(false); }}
+                      onClick={() => { commitPageTarget(idx, { showIndicator: viewMode === 'immersive' }); closeThumbnailDrawer(); }}
                       style={{
                         position: 'relative',
                         borderRadius: '6px',
@@ -4138,7 +4106,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                       }}
                     >
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                        <DrawerThumb archiveId={archiveId} pageIndex={idx} active={showDrawer} cacheOnly={assetCacheOnly} eager={drawerPrefetchSet.has(idx)} />
+                        <ArchivePageThumbnail archiveId={archiveId} pageIndex={idx} active={showDrawer} cacheOnly={assetCacheOnly} eager={drawerPrefetchSet.has(idx)} />
                       </div>
                       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '11px', textAlign: 'center', padding: '2px 0' }}>
                         P. {idx + 1}
@@ -4155,7 +4123,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       <ConfirmDialog
         open={!!historyDeleteTarget}
         title="确认删除阅读历史"
-        message={historyDeleteTarget ? `将“${historyDeleteTarget.title}”从阅读历史中移除。再次阅读该归档时会重新加入历史记录。` : ''}
+        message={historyDeleteTarget ? `将“${historyDeleteTarget.title}”从阅读历史中移除。再次阅读该档案时会重新加入历史记录。` : ''}
         confirmLabel="确认删除"
         cancelLabel="取消"
         onConfirm={confirmRemoveHistory}

@@ -108,6 +108,132 @@ export function buildDuplicateGroups(pairs, ignoredPairKeys = new Set()) {
     .sort((a, b) => a[0].localeCompare(b[0]));
 }
 
+function duplicateGroupIds(group) {
+  return (group || [])
+    .map((item) => String(item?.arcid || item?.id || item || ''))
+    .filter(Boolean);
+}
+
+function buildDuplicateSelectionModel(groups) {
+  const normalizedGroups = (groups || []).map(duplicateGroupIds).filter((ids) => ids.length > 1);
+  const groupsById = new Map();
+  const neighbors = new Map();
+  normalizedGroups.forEach((ids) => {
+    const uniqueIds = Array.from(new Set(ids));
+    uniqueIds.forEach((id) => {
+      if (!groupsById.has(id)) groupsById.set(id, []);
+      groupsById.get(id).push(uniqueIds);
+      if (!neighbors.has(id)) neighbors.set(id, new Set());
+      uniqueIds.forEach((otherId) => {
+        if (otherId !== id) neighbors.get(id).add(otherId);
+      });
+    });
+  });
+
+  const componentById = new Map();
+  neighbors.forEach((_, startId) => {
+    if (componentById.has(startId)) return;
+    const component = new Set();
+    const queue = [startId];
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (component.has(id)) continue;
+      component.add(id);
+      neighbors.get(id)?.forEach((neighbor) => {
+        if (!component.has(neighbor)) queue.push(neighbor);
+      });
+    }
+    component.forEach((id) => componentById.set(id, component));
+  });
+  return { groupsById, componentById, ids: Array.from(neighbors.keys()) };
+}
+
+function canAddDuplicateSelection(model, selected, id) {
+  if (!id || selected.has(id) || !model.groupsById.has(id)) return false;
+  const conflictsWithGroup = model.groupsById.get(id)
+    .some((group) => group.some((otherId) => otherId !== id && selected.has(otherId)));
+  if (conflictsWithGroup) return false;
+  const component = model.componentById.get(id);
+  const selectedInComponent = Array.from(component || []).filter((item) => selected.has(item)).length;
+  return !component || selectedInComponent < component.size - 1;
+}
+
+export function normalizeDuplicateSelection(groups, requestedIds) {
+  const model = buildDuplicateSelectionModel(groups);
+  const selected = new Set();
+  const accepted = [];
+  Array.from(requestedIds || []).forEach((value) => {
+    const id = String(value || '');
+    if (!canAddDuplicateSelection(model, selected, id)) return;
+    selected.add(id);
+    accepted.push(id);
+  });
+  return accepted;
+}
+
+export function getDuplicateSelectionDisabledIds(groups, selectedIds) {
+  const model = buildDuplicateSelectionModel(groups);
+  const normalized = normalizeDuplicateSelection(groups, selectedIds);
+  const selected = new Set(normalized);
+  return new Set(model.ids.filter((id) => (
+    !selected.has(id)
+    && !canAddDuplicateSelection(model, selected, id)
+  )));
+}
+
+const DEDUPE_ARCHIVE_FIELDS = [
+  'arcid', 'id', 'title', 'tags', 'size', 'filesize', 'file_size',
+  'pagecount', 'total', 'progress', 'page', 'date_added',
+];
+
+export function compactDedupeArchives(groups) {
+  const seen = new Set();
+  const compact = [];
+  (groups || []).flat().forEach((archive) => {
+    const id = String(archive?.arcid || archive?.id || '');
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const item = {};
+    DEDUPE_ARCHIVE_FIELDS.forEach((field) => {
+      if (archive[field] !== undefined) item[field] = archive[field];
+    });
+    compact.push(item);
+  });
+  return compact;
+}
+
+export function createDedupeSavedResultPayload({
+  groups,
+  dateRange,
+  status = '',
+  lastScanStats = null,
+  workerWarning = '',
+  selectedArchiveIds = [],
+  selectedGroupKeys = [],
+  savedAt = new Date().toISOString(),
+} = {}) {
+  const visibleGroups = (groups || []).filter((group) => duplicateGroupIds(group).length > 1);
+  if (visibleGroups.length === 0) return null;
+
+  const idGroups = visibleGroups.map(duplicateGroupIds);
+  const visibleArchiveIds = new Set(idGroups.flat());
+  const visibleGroupKeys = new Set(idGroups.map((ids) => [...ids].sort().join('|')));
+  return {
+    version: 2,
+    savedAt,
+    dateRange,
+    status,
+    archives: compactDedupeArchives(visibleGroups),
+    groups: idGroups,
+    lastScanStats,
+    workerWarning,
+    selectedArchiveIds: Array.from(selectedArchiveIds || [], String)
+      .filter((id) => visibleArchiveIds.has(id)),
+    selectedGroupKeys: Array.from(selectedGroupKeys || [], String)
+      .filter((key) => visibleGroupKeys.has(key)),
+  };
+}
+
 function tagSet(archive) {
   return new Set(String(archive?.tags || '')
     .split(',')

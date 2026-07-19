@@ -92,7 +92,7 @@ async function readImageAspectRatio(src) {
   }
 }
 
-export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveContextMenu, longPressTitle = '', currentPage, progress, showProgressBar, reserveProgressSpace = false, noCrop, cacheOnly = false, wrapStyle, className, overlay, selectionMode = false, selected = false, onSelectToggle }) {
+export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveContextMenu, longPressTitle = '', currentPage, progress, showProgressBar, reserveProgressSpace = false, noCrop, cacheOnly = false, wrapStyle, className, overlay, selectionMode = false, selected = false, onSelectToggle, disabled = false }) {
   const id = archive.arcid || archive.id;
   const [hovered, setHovered] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -101,6 +101,10 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const [retryKey, setRetryKey] = useState(0);
   const [panelPos, setPanelPos] = useState({ top: 0, left: 0 });
   const isMobile = useViewportWidth() < 768;
+  const [hasTouchInteraction, setHasTouchInteraction] = useState(() => (
+    window.matchMedia?.('(hover: none), (pointer: coarse)').matches ?? false
+  ));
+  const touchInteractionRef = useRef(hasTouchInteraction);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const aspectCacheKey = scopedCacheKey(`aspect:${id}`);
   const [aspectRatio, setAspectRatio] = useState(() => archiveAspectRatioCache.get(aspectCacheKey) ?? null);
@@ -363,7 +367,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
     };
   }, []);
 
-  const isPanelVisible = hovered || (isMobile && mobilePanelOpen);
+  const isPanelVisible = hovered || (hasTouchInteraction && mobilePanelOpen);
 
   useLayoutEffect(() => {
     if (!isPanelVisible || categorizedTags.length === 0) return;
@@ -417,7 +421,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   }, [isPanelVisible]);
 
   useEffect(() => {
-    if (!isMobile || !mobilePanelOpen) return;
+    if (!hasTouchInteraction || !mobilePanelOpen) return;
     const handler = (e) => {
       if (panelRef.current && panelRef.current.contains(e.target)) return;
       if (cardRef.current && cardRef.current.contains(e.target)) return;
@@ -426,10 +430,11 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
     };
     document.addEventListener('touchstart', handler, { passive: true });
     return () => document.removeEventListener('touchstart', handler);
-  }, [isMobile, mobilePanelOpen]);
+  }, [hasTouchInteraction, mobilePanelOpen]);
 
   const handleCoverClick = (e) => {
     e.stopPropagation();
+    if (disabled) return;
     if (selectionMode && onSelectToggle) {
       onSelectToggle(archive, e);
       return;
@@ -438,7 +443,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   };
 
   const handleTitleClick = (e) => {
-    if (!isMobile) return;
+    if (!touchInteractionRef.current || disabled) return;
     e.stopPropagation();
     updatePanelPosition();
     setMobilePanelOpen((v) => !v);
@@ -521,7 +526,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
           minWidth: isWide ? '316px' : '150px',
           width: isWide ? '316px' : '150px',
           padding: '12px',
-          cursor: 'pointer',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, border-color 0.22s ease',
           display: 'flex',
           flexDirection: 'column',
@@ -533,21 +538,34 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
           WebkitUserSelect: 'none',
           userSelect: 'none',
         }}
+        aria-disabled={disabled || undefined}
+        onPointerDown={(event) => {
+          const nextTouchInteraction = event.pointerType === 'touch' || event.pointerType === 'pen';
+          touchInteractionRef.current = nextTouchInteraction;
+          setHasTouchInteraction(nextTouchInteraction);
+        }}
         onClick={(e) => {
           if (suppressClickAfterLongPress(e)) return;
+          if (disabled) return;
           if (selectionMode && onSelectToggle) {
             onSelectToggle(archive, e);
             return;
           }
-          if (!isMobile) onClick(e);
+          if (touchInteractionRef.current) {
+            e.stopPropagation();
+            updatePanelPosition();
+            setMobilePanelOpen((value) => !value);
+            return;
+          }
+          if (!touchInteractionRef.current) onClick(e);
         }}
-        onMouseEnter={!isMobile ? showPanel : undefined}
+        onMouseEnter={!hasTouchInteraction ? showPanel : undefined}
         onMouseDown={startLongPress}
         onMouseUp={cancelLongPress}
         onMouseMove={handlePointerMoveCancel}
         onMouseLeave={(e) => {
           cancelLongPress();
-          if (!isMobile) hidePanelWithDelay(e);
+          if (!hasTouchInteraction) hidePanelWithDelay(e);
         }}
         onTouchStart={startLongPress}
         onTouchEnd={cancelLongPress}

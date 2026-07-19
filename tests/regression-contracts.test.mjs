@@ -20,6 +20,166 @@ test('dedupe scan is scoped and does not rebuild every thumbnail first', () => {
   assert.match(source, /waitForMinionJob/);
 });
 
+test('dedupe mutations synchronize an existing saved result and clear it when complete', () => {
+  const page = read('src/pages/DeduplicatePage.jsx');
+  assert.match(page, /syncSavedResult\(nextGroups/);
+  assert.match(page, /createDedupeSavedResultPayload/);
+  assert.match(page, /localStorage\.removeItem\(scopedStorageKey\(DEDUPE_SAVED_RESULT_KEY\)\)/);
+});
+
+test('global UI copy and selection styles use the archive terminology consistently', () => {
+  const css = read('src/index.css');
+  const metadata = read('src/pages/MetadataPage.jsx');
+  const home = read('src/pages/Home.jsx');
+  assert.match(css, /body\s*\{[^}]*user-select:\s*none;[^}]*-webkit-user-select:\s*none;/s);
+  assert.match(css, /input,[\s\S]*textarea,[\s\S]*\[contenteditable="true"\][^{]*\{[^}]*user-select:\s*text;/s);
+  assert.match(metadata, /className="metadata-field-label">标签</);
+  assert.match(css, /\.metadata-field-label\s*\{[^}]*font-weight:\s*650;/s);
+  assert.match(home, /style=\{\{ flex:\s*'1\.35 1 0'/);
+  assert.doesNotMatch(home, /全部归档|待看归档|上传归档|重复归档检测/);
+});
+
+test('expanded EH settings release their stacking context so tooltips cover secret inputs', () => {
+  const home = read('src/pages/Home.jsx');
+  assert.match(home, /transform:\s*readerSettings\.ehEnabled \? 'none' : 'translateY\(-6px\)'/);
+});
+
+test('metadata tags refresh async translations and animate actual-width row layout without hover feedback', () => {
+  const chip = read('src/components/MetadataTagChip.jsx');
+  const page = read('src/pages/MetadataPage.jsx');
+  const css = read('src/index.css');
+  assert.match(page, /import \{ loadTagDB, translateTag \} from '\.\.\/lib\/tags';/);
+  assert.match(page, /loadTagDB\(\)\.then\(\(\) => \{[\s\S]*setTagDBRevision/);
+  assert.match(chip, /const \[textWidths, setTextWidths\] = useState\(null\)/);
+  assert.match(chip, /metadataTagReservedWidth\(textWidths\?\.translated, textWidths\?\.original, CHIP_CHROME_WIDTH\)/);
+  assert.match(chip, /if \(reservedWidth !== null\) onMeasure\?\.\(tag, reservedWidth\)/);
+  assert.match(chip, /className="metadata-tag-slot"[\s\S]*--metadata-tag-visible-width/);
+  assert.doesNotMatch(chip, /onPointerEnter|onPointerLeave/);
+  assert.match(page, /closest\('\.metadata-tag-slot'\)/);
+  assert.match(page, /const rows = useMemo\([\s\S]*nextWidth > contentWidth[\s\S]*React\.cloneElement/);
+  assert.match(page, /className="metadata-tags-row" key=\{index\}/);
+  assert.match(css, /\.metadata-tags-row\s*{[\s\S]*?flex-wrap:\s*nowrap/);
+  assert.match(css, /\.metadata-tags-row > \.metadata-tag-slot\s*{[\s\S]*?flex:\s*0 1 var\(--metadata-tag-visible-width\)/);
+  assert.match(css, /\.metadata-tags-row > \.metadata-tag-slot\s*{[\s\S]*?transition:[^}]*flex-basis 0\.24s ease/);
+  assert.match(page, /function MetadataTagsBox[\s\S]*ResizeObserver[\s\S]*metadata-tags-list/);
+  assert.match(css, /\.metadata-tags-box\s*{[\s\S]*?transition:\s*height 0\.24s ease/);
+});
+
+test('metadata loading state stays centered in the viewport', () => {
+  const page = read('src/pages/MetadataPage.jsx');
+  const css = read('src/index.css');
+  assert.match(page, /className="metadata-loading-state"/);
+  assert.match(css, /\.metadata-loading-state\s*\{[^}]*min-height:\s*100dvh;[^}]*display:\s*grid;[^}]*place-items:\s*center;/s);
+});
+
+test('dedupe results use compact persistence, interlocked selection, and wide-card layout', () => {
+  const page = read('src/pages/DeduplicatePage.jsx');
+  const deduplicate = read('src/lib/deduplicate.js');
+  const css = read('src/index.css');
+  assert.match(deduplicate, /version:\s*2/);
+  assert.match(deduplicate, /compactDedupeArchives\(visibleGroups\)/);
+  assert.match(page, /normalizeDuplicateSelection/);
+  assert.match(page, /getDuplicateSelectionDisabledIds/);
+  assert.match(page, /className="dedupe-groups-grid"/);
+  assert.match(css, /\.dedupe-groups-grid\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;[^}]*justify-content:\s*center;/s);
+  assert.match(css, /\.dedupe-group\s*\{[^}]*width:\s*max-content;[^}]*max-width:\s*100%;/s);
+  assert.match(css, /\.dedupe-group-cards\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;[^}]*justify-content:\s*center;/s);
+  assert.match(css, /\.dedupe-card-item\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*width:\s*max-content;[^}]*max-width:\s*100%;/s);
+  assert.match(page, /function DedupeArchiveItem/);
+  assert.doesNotMatch(page, /onWideChange=\{setWide\}/);
+  assert.doesNotMatch(page, /wide \? ' is-wide' : ''/);
+  assert.match(css, /\.dedupe-card-item\s*\{[^}]*width:\s*max-content;/s);
+  assert.match(css, /\.dedupe-card-size-row\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*center;/s);
+  assert.doesNotMatch(css, /\.dedupe-card-item:has/);
+  assert.match(page, /className="dedupe-group-selection-message"/);
+  assert.match(page, /pagecount \?\? archive\.total/);
+  assert.match(css, /\.dedupe-groups-grid\s*\{/);
+  assert.match(css, /\.dedupe-card-item\s*>\s*\.archive-card-wrap\.is-wide/);
+  assert.match(css, /\.dedupe-group-selection-message\s*\{[^}]*grid-template-rows:\s*0fr/s);
+  assert.match(css, /\.dedupe-group\.is-selected\s+\.dedupe-group-selection-message\s*\{[^}]*grid-template-rows:\s*1fr/s);
+});
+
+test('dedupe cards own a focused context menu and progress-free central thumbnail preview', () => {
+  const page = read('src/pages/DeduplicatePage.jsx');
+  const menu = read('src/components/DedupeArchiveContextMenu.jsx');
+  const dialog = read('src/components/ArchiveThumbnailDialog.jsx');
+  const css = read('src/index.css');
+  assert.match(page, /onArchiveContextMenu=\{onContextMenu\}/);
+  assert.match(page, /onContextMenu=\{handleOpenArchiveMenu\}/);
+  assert.match(page, /<DedupeArchiveContextMenu/);
+  assert.match(page, /<ArchiveThumbnailDialog/);
+  assert.match(menu, />\s*打开阅读页\s*</);
+  assert.doesNotMatch(menu, /新标签/);
+  assert.match(menu, /查看缩略图/);
+  assert.doesNotMatch(menu, /删除|下载|编辑元数据/);
+  assert.match(menu, /window\.addEventListener\('scroll', close, true\)/);
+  assert.match(dialog, /useState\('grid'\)/);
+  assert.match(dialog, /setViewMode\('preview'\)/);
+  assert.match(dialog, /返回缩略图/);
+  assert.match(dialog, /lrrApi\.getArchiveFiles/);
+  assert.match(dialog, /<ArchivePageThumbnail/);
+  assert.match(dialog, /className="archive-thumbnail-dialog-thumb-media"/);
+  assert.match(page, /rememberArchiveMetadata\(archive, \{ immediate: true \}\)/);
+  assert.match(css, /\.archive-thumbnail-dialog-grid\s*\{[^}]*grid-auto-rows:\s*176px;/s);
+  assert.match(css, /\.archive-thumbnail-dialog-thumb-media\s*\{[^}]*position:\s*relative;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
+  assert.match(css, /\.archive-thumbnail-dialog-thumb-media\s*>\s*\.archive-page-thumbnail-(?:image|placeholder)/s);
+  assert.match(css, /\.archive-thumbnail-dialog-preview-image\s*\{[^}]*max-width:\s*100%;[^}]*max-height:\s*100%;[^}]*width:\s*auto;[^}]*height:\s*auto;/s);
+  assert.doesNotMatch(dialog, /updateProgress|saveHistory|readingProgress/i);
+  assert.match(css, /\.archive-thumbnail-dialog-overlay/);
+  assert.match(css, /\.archive-thumbnail-dialog-grid/);
+  assert.match(css, /\.archive-thumbnail-dialog-preview-image/);
+});
+
+test('dedupe date range uses an adaptive styled calendar instead of the native picker', () => {
+  const page = read('src/pages/DeduplicatePage.jsx');
+  const picker = read('src/components/DatePicker.jsx');
+  const css = read('src/index.css');
+  assert.match(page, /<DatePicker/);
+  assert.doesNotMatch(page, /type="date"/);
+  assert.match(picker, /createPortal/);
+  assert.match(picker, /resolveCalendarPopoverPosition/);
+  assert.match(picker, /aria-label="上个月"/);
+  assert.match(picker, /aria-label="下个月"/);
+  assert.match(picker, /ariaLabel="年份"/);
+  assert.match(picker, /ariaLabel="月份"/);
+  assert.match(picker, /import CustomSelect from '.\/CustomSelect'/);
+  assert.match(picker, /<CustomSelect/);
+  assert.doesNotMatch(picker, /<select/);
+  assert.match(picker, /2000 \+ index/);
+  assert.doesNotMatch(picker, /1900 \+ index/);
+  assert.match(picker, /width: '126px', minWidth: '126px'/);
+  assert.match(picker, /width: '100px', minWidth: '100px'/);
+  assert.match(picker, /event\?\.target\?\.closest\?\.\('\[data-select-dropdown="true"\]'\)/);
+  assert.match(picker, /data-select-dropdown/);
+  assert.match(css, /\.date-picker-trigger/);
+  assert.match(css, /\.date-picker-popover/);
+});
+
+test('dedupe bulk group toggle lives below scan stats and its context menu stays compact', () => {
+  const page = read('src/pages/DeduplicatePage.jsx');
+  const menu = read('src/components/DedupeArchiveContextMenu.jsx');
+  const css = read('src/index.css');
+  assert.match(page, /function StatsPanel\([\s\S]*aria-pressed=\{allGroupsSelected\}[\s\S]*全选分组/);
+  assert.match(page, /<StatsPanel[\s\S]*allGroupsSelected=\{allGroupsSelected\}/);
+  assert.match(page, /\['选中档案', selectedArchiveCount\]/);
+  assert.match(page, /\['选中分组', selectedGroupCount\]/);
+  assert.match(page, /function StatsPanel\([\s\S]*智能选择[\s\S]*>\s*删除选中\s*<[\s\S]*>\s*标记分组不重复\s*</);
+  assert.doesNotMatch(page, /删除选中 \(\{selectedArchiveCount\}\)|标记分组不重复 \(\{selectedGroupCount\}\)/);
+  assert.match(page, /function DateRangePanel\([\s\S]*检测范围[\s\S]*>重置</);
+  assert.match(page, /function DateRangePanel\([\s\S]*\{running \? '处理中\.\.\.' : '开始检测'\}/);
+  assert.doesNotMatch(page, /<header[\s\S]*智能选择[\s\S]*<\/header>/);
+  assert.doesNotMatch(page, /<header[\s\S]*开始检测[\s\S]*<\/header>/);
+  assert.doesNotMatch(page, /<header[\s\S]*选择全部分组标记为不重复[\s\S]*<\/header>/);
+  assert.match(menu, /const width = 150/);
+  assert.doesNotMatch(css, /\.dedupe-archive-context-menu\s*\{[^}]*width:\s*190px/);
+});
+
+test('dedupe waiting copy describes the similarity algorithm without retired branding', () => {
+  const page = read('src/pages/DeduplicatePage.jsx');
+  assert.match(page, /点击“开始检测”后会读取档案封面，通过相似度算法查找疑似重复的档案。/);
+  assert.doesNotMatch(page, /按 LRReader 的缩略图相似度规则查找疑似重复/);
+});
+
 test('metadata navigation, races, and operations are guarded', () => {
   const source = read('src/pages/MetadataPage.jsx');
   assert.match(source, /setNavigationGuard/);
@@ -247,7 +407,7 @@ test('progress regression is configured only from the general settings section',
   const cacheSettings = read('src/components/CacheSettings.jsx');
   const css = read('src/index.css');
 
-  for (const label of ['通用设置', '缓存', '归档显示', '浏览与记录']) {
+  for (const label of ['通用设置', '缓存', '档案显示', '浏览与记录']) {
     assert.match(home, new RegExp(`>${label}<`));
   }
   assert.doesNotMatch(cacheSettings, /允许阅读进度回溯|通用设置/);
@@ -311,9 +471,15 @@ test('image cache falls back to IndexedDB when Cache Storage is unavailable', ()
 
 test('drawer overview owns archive size and disables scroll anchoring', () => {
   const reader = read('src/pages/Reader.jsx');
+  const thumbnail = read('src/components/ArchivePageThumbnail.jsx');
   assert.doesNotMatch(reader, /reader-archive-summary/);
   assert.match(reader, /页面总览 · 共\{pages\.length\}页\{archiveSizeLabel \? ` · \$\{archiveSizeLabel\}` : ''\}/);
   assert.match(reader, /overflowAnchor: 'none'/);
+  assert.match(reader, /import ArchivePageThumbnail from '..\/components\/ArchivePageThumbnail'/);
+  assert.match(reader, /<ArchivePageThumbnail archiveId=\{archiveId\}/);
+  assert.match(thumbnail, /thumb:drawer:v3:\$\{archiveId\}:\$\{page\}/);
+  assert.match(thumbnail, /waitForMinionJob\(jobId, \{ timeoutMs: 2 \* 60 \* 1000 \}\)/);
+  assert.match(thumbnail, /result\.status === 202/);
 });
 
 test('archive tag panel follows cards inside horizontal scrollers and closes offscreen', () => {
@@ -321,6 +487,30 @@ test('archive tag panel follows cards inside horizontal scrollers and closes off
   assert.match(card, /scrollTarget\.contains\(cardRef\.current\)/);
   assert.match(card, /isOutsideHorizontalViewport\(rect, scrollTarget\.getBoundingClientRect\(\)\)/);
   assert.match(card, /updatePanelPosition\(\)/);
+});
+
+test('touch cards open tags outside the cover while pointer devices keep click navigation', () => {
+  const card = read('src/components/ArchiveCard.jsx');
+  assert.match(card, /const \[hasTouchInteraction/);
+  assert.match(card, /touchInteractionRef\.current = nextTouchInteraction/);
+  assert.match(card, /if \(touchInteractionRef\.current\)\s*\{[\s\S]*setMobilePanelOpen/);
+  assert.match(card, /handleCoverClick/);
+  assert.match(card, /if \(!touchInteractionRef\.current\) onClick\(e\)/);
+});
+
+test('Reader sizes panels by viewport and opens the thumbnail drawer from its trigger side', () => {
+  const reader = read('src/pages/Reader.jsx');
+  assert.match(reader, /const \[drawerSide, setDrawerSide\] = useState\('right'\)/);
+  assert.match(reader, /const openThumbnailDrawer = useCallback/);
+  assert.match(reader, /setShowDrawer\(false\);[\s\S]*setTimeout\([\s\S]*DRAWER_TRANSITION_MS/s);
+  assert.match(reader, /setDrawerSide\(side\);[\s\S]*requestAnimationFrame\(\(\) => setShowDrawer\(true\)\)/s);
+  assert.doesNotMatch(reader, /onClick=\{\(\) => \{[^}]*setDrawerSide\(/);
+  assert.equal((reader.match(/openThumbnailDrawer\(/g) || []).length >= 2, true);
+  assert.match(reader, /width:\s*'min\(380px, calc\(100vw - 40px\)\)'/);
+  assert.match(reader, /justifyContent:\s*drawerSide === 'left' \? 'flex-start' : 'flex-end'/);
+  assert.match(reader, /translateX\(\$\{drawerSide === 'left' \? '-100%' : '100%'\}\)/);
+  assert.doesNotMatch(reader, /indicatorEl\.addEventListener\('transitionend'/);
+  assert.doesNotMatch(reader, /ro\.observe\(indicatorEl\)/);
 });
 
 test('bundled variable CJK fonts use swap and language-aware title selection', () => {

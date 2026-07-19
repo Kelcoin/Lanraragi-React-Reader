@@ -19,3 +19,26 @@ export function selectCacheEvictions(entries, limit, protectedKeys = new Set()) 
   }
   return selected;
 }
+
+export function resolveMemoryImageCacheBudget(deviceMemory) {
+  const memory = Number(deviceMemory);
+  if (Number.isFinite(memory) && memory <= 4) return 64 * 1024 ** 2;
+  if (Number.isFinite(memory) && memory >= 8) return 192 * 1024 ** 2;
+  return 96 * 1024 ** 2;
+}
+
+export function selectMemoryImageCacheEvictions(entries, incomingSize, budget, maxEntries = 64) {
+  let bytes = entries.reduce((sum, entry) => sum + (Number(entry.size) || 0), 0);
+  let count = entries.length;
+  const incoming = Math.max(0, Number(incomingSize) || 0);
+  const limit = Math.max(1, Number(budget) || 1);
+  const victims = [];
+  const oldestFirst = [...entries].sort((a, b) => (a.lastAccessedAt || 0) - (b.lastAccessedAt || 0));
+  while (oldestFirst.length && (count + 1 > maxEntries || bytes + incoming > limit)) {
+    const victim = oldestFirst.shift();
+    victims.push(victim.key);
+    bytes -= Number(victim.size) || 0;
+    count -= 1;
+  }
+  return victims;
+}

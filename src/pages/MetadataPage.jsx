@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { lrrApi } from '../lib/api';
 import { formatMetadataTag, mergeTags, metadataFingerprint, normalizeMetadataPlugins, parseTags, readMetadataPluginResult } from '../lib/metadataEditor';
 import { navigateHome, navigateToArchive, setNavigationGuard } from '../lib/navigation';
@@ -9,9 +9,64 @@ import MetadataTagChip from '../components/MetadataTagChip';
 import EhFavoriteDeleteSwitch from '../components/EhFavoriteDeleteSwitch';
 import { getEhFavoriteDeleteSync } from '../lib/ehFavoriteSync';
 import { deleteArchiveWithFavoriteSync } from '../lib/archiveDeletion';
-import { translateTag } from '../lib/tags';
+import { loadTagDB, translateTag } from '../lib/tags';
 
 const field = { width: '100%', boxSizing: 'border-box' };
+
+function MetadataTagsBox({ children, onPointerMove, onPointerLeave }) {
+  const contentRef = useRef(null);
+  const [height, setHeight] = useState(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [itemWidths, setItemWidths] = useState({});
+
+  const handleMeasure = useCallback((tag, width) => {
+    setItemWidths(current => current[tag] === width ? current : { ...current, [tag]: width });
+  }, []);
+
+  const rows = useMemo(() => {
+    const items = React.Children.toArray(children);
+    if (!contentWidth) return [items];
+    const gap = Math.max(4, Math.min(7, window.innerWidth * 0.0125));
+    const result = [];
+    let row = [];
+    let rowWidth = 0;
+    items.forEach((child) => {
+      const reservedWidth = Math.min(itemWidths[child.props.tag] || 74, contentWidth);
+      const nextWidth = row.length ? rowWidth + gap + reservedWidth : reservedWidth;
+      if (row.length && nextWidth > contentWidth) {
+        result.push(row);
+        row = [];
+        rowWidth = 0;
+      }
+      row.push(React.cloneElement(child, { onMeasure: handleMeasure }));
+      rowWidth = row.length === 1 ? reservedWidth : rowWidth + gap + reservedWidth;
+    });
+    if (row.length) result.push(row);
+    return result;
+  }, [children, contentWidth, handleMeasure, itemWidths]);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return undefined;
+    const updateHeight = () => {
+      const frame = getComputedStyle(content.parentElement);
+      const inset = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+        .reduce((total, property) => total + (Number.parseFloat(frame[property]) || 0), 0);
+      setHeight(Math.ceil(content.getBoundingClientRect().height + inset));
+      setContentWidth(content.clientWidth);
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
+  return <div className="metadata-tags-box" style={height ? { height: Math.max(74, height) } : undefined}>
+    <div ref={contentRef} className="metadata-tags-list" onPointerMove={onPointerMove} onPointerLeave={onPointerLeave}>
+      {rows.map((row, index) => <div className="metadata-tags-row" key={index}>{row}</div>)}
+    </div>
+  </div>;
+}
 
 export default function MetadataPage({ archiveId }) {
   const [archive, setArchive] = useState(null);
@@ -27,6 +82,7 @@ export default function MetadataPage({ archiveId }) {
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState('');
   const [revealedTag, setRevealedTag] = useState('');
+  const [, setTagDBRevision] = useState(0);
   const tagInputRef = useRef(null);
   const statusTimerRef = useRef(null);
   const statusIdRef = useRef(0);
@@ -34,6 +90,14 @@ export default function MetadataPage({ archiveId }) {
   const operationControllerRef = useRef(null);
   const allowNavigationRef = useRef(false);
   const dirty = useMemo(() => !!baseline && metadataFingerprint({ ...form, tags: form.tags.join(',') }) !== baseline, [baseline, form]);
+
+  useEffect(() => {
+    let active = true;
+    loadTagDB().then(() => {
+      if (active) setTagDBRevision(current => current + 1);
+    });
+    return () => { active = false; };
+  }, []);
 
   const showStatus = (text, type = 'info', { autoHide = false } = {}) => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
@@ -104,7 +168,7 @@ export default function MetadataPage({ archiveId }) {
       await lrrApi.clearSearchCache().catch(() => {});
       setBaseline(metadataFingerprint({ ...form, tags: form.tags.join(',') })); showStatus('已保存', 'success', { autoHide: true });
     } catch (error) {
-      if (error?.name !== 'AbortError') showStatus(error.status === 423 ? '归档正被其他任务占用，请稍后重试。' : error.message, 'error');
+      if (error?.name !== 'AbortError') showStatus(error.status === 423 ? '档案正被其他任务占用，请稍后重试。' : error.message, 'error');
     } finally {
       if (operationControllerRef.current === controller) operationControllerRef.current = null;
       setBusy('');
@@ -128,7 +192,7 @@ export default function MetadataPage({ archiveId }) {
       setBusy('');
     }
   };
-  if (!archive) return <div style={{ padding: 32 }}>{status?.text || '正在载入元数据…'}</div>;
+  if (!archive) return <div className="metadata-loading-state">{status?.text || '正在载入元数据…'}</div>;
   return <main className="metadata-page">
     <h2 className="metadata-page-title">编辑 {archive.title}</h2>
     <section className="glass-panel metadata-panel">
@@ -136,9 +200,18 @@ export default function MetadataPage({ archiveId }) {
       <label className="metadata-field">ID<input className="input-glass" style={field} readOnly value={archiveId} /></label>
       <label className="metadata-field">标题<input className="input-glass" style={field} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label>
       <label className="metadata-field">摘要<textarea className="input-glass" style={{ ...field, minHeight: 110 }} value={form.summary} onChange={e => setForm({ ...form, summary: e.target.value })} /></label>
-      <div className="metadata-tag-field"><div style={{ marginBottom: 10 }}>标签</div>
+      <div className="metadata-tag-field"><div className="metadata-field-label">标签</div>
         <div ref={tagInputRef} style={{ position: 'relative', marginBottom: 10 }}><input className="input-glass" style={field} value={tagInput} placeholder="输入中文、拼音或标签，按回车/逗号添加" onChange={e => { const value = e.target.value; if (value.includes(',')) addTags(value); else setTagInput(value); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTags(tagInput); } else if (e.key === 'Backspace' && !tagInput && form.tags.length) setForm({ ...form, tags: form.tags.slice(0, -1) }); }} /><TagSuggest inputValue={tagInput} containerRef={tagInputRef} onSelectTag={(tag) => addTags(tag.replace(/\$$/, ''))} /></div>
-        <div className="metadata-tags-box">{form.tags.map(tag => <MetadataTagChip key={tag} tag={tag} translatedTag={formatMetadataTag(tag, translateTag)} revealed={revealedTag === tag} onReveal={() => setRevealedTag(tag)} onHide={() => setRevealedTag(current => current === tag ? '' : current)} onToggle={() => setRevealedTag(current => current === tag ? '' : tag)} onCopy={async () => { try { await navigator.clipboard.writeText(tag); showStatus(`已复制标签：${tag}`, 'success'); } catch { showStatus('复制标签失败', 'error'); } }} onDelete={() => { setRevealedTag(current => current === tag ? '' : current); setForm({ ...form, tags: form.tags.filter(item => item !== tag) }); }} />)}</div>
+        <MetadataTagsBox
+          onPointerMove={(event) => {
+            if (event.pointerType !== 'mouse') return;
+            const nextTag = event.target.closest('.metadata-tag-slot')?.dataset.metadataTag || '';
+            setRevealedTag(current => current === nextTag ? current : nextTag);
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType === 'mouse') setRevealedTag('');
+          }}
+        >{form.tags.map(tag => <MetadataTagChip key={tag} tag={tag} translatedTag={formatMetadataTag(tag, translateTag)} revealed={revealedTag === tag} onToggle={() => setRevealedTag(current => current === tag ? '' : tag)} onCopy={async () => { try { await navigator.clipboard.writeText(tag); showStatus(`已复制标签：${tag}`, 'success'); } catch { showStatus('复制标签失败', 'error'); } }} onDelete={() => { setRevealedTag(current => current === tag ? '' : current); setForm({ ...form, tags: form.tags.filter(item => item !== tag) }); }} />)}</MetadataTagsBox>
       </div>
       <div className="metadata-plugin-row"><CustomSelect value={plugin} options={plugins} onChange={setPlugin} /><input className="input-glass" value={pluginArg} onChange={e => setPluginArg(e.target.value)} placeholder="插件参数或 URL" disabled={!!busy} /><button className="btn" onClick={runPlugin} disabled={!!busy}>执行插件</button></div>
       <div className="metadata-status-wrap" data-open={status && !status.closing ? 'true' : 'false'} aria-live="polite">
@@ -146,9 +219,9 @@ export default function MetadataPage({ archiveId }) {
           {status && <div key={status.id} className={`metadata-status-card is-${status.type}${status.closing ? ' is-closing' : ''}`}>{status.text}</div>}
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 14 }}><button className="btn" onClick={() => navigateToArchive(archiveId)} disabled={!!busy}>阅读归档</button><button className="btn metadata-delete-button" onClick={() => { setDeleteSync(true); setDeleteOpen(true); }} disabled={!!busy}>删除归档</button><button className="btn" onClick={save} disabled={!!busy}>{busy === 'save' ? '保存中…' : '保存元数据'}</button><button className="btn" disabled={!!busy} onClick={() => { if (window.history.length > 1) window.history.back(); else navigateHome(); }}>返回</button></div>
+      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 14 }}><button className="btn" onClick={() => navigateToArchive(archiveId)} disabled={!!busy}>阅读档案</button><button className="btn metadata-delete-button" onClick={() => { setDeleteSync(true); setDeleteOpen(true); }} disabled={!!busy}>删除档案</button><button className="btn" onClick={save} disabled={!!busy}>{busy === 'save' ? '保存中…' : '保存元数据'}</button><button className="btn" disabled={!!busy} onClick={() => { if (window.history.length > 1) window.history.back(); else navigateHome(); }}>返回</button></div>
     </section>
-    <ConfirmDialog open={deleteOpen} title="确认删除归档" message={`将永久删除“${archive.title}”。`} confirmLabel={deleting ? '删除中…' : '确认删除'} confirmDisabled={deleting} onCancel={() => !deleting && setDeleteOpen(false)} onConfirm={async () => { setDeleting(true); try { await deleteArchiveWithFavoriteSync({ ...archive, id: archiveId }, { syncEnabled: getEhFavoriteDeleteSync(), confirmationEnabled: deleteSync }); allowNavigationRef.current = true; navigateHome(); } catch (error) { showStatus(error.message, 'error'); setDeleting(false); } }}>
+    <ConfirmDialog open={deleteOpen} title="确认删除档案" message={`将永久删除“${archive.title}”。`} confirmLabel={deleting ? '删除中…' : '确认删除'} confirmDisabled={deleting} onCancel={() => !deleting && setDeleteOpen(false)} onConfirm={async () => { setDeleting(true); try { await deleteArchiveWithFavoriteSync({ ...archive, id: archiveId }, { syncEnabled: getEhFavoriteDeleteSync(), confirmationEnabled: deleteSync }); allowNavigationRef.current = true; navigateHome(); } catch (error) { showStatus(error.message, 'error'); setDeleting(false); } }}>
       {getEhFavoriteDeleteSync() && <EhFavoriteDeleteSwitch checked={deleteSync} onChange={setDeleteSync} disabled={deleting} />}
     </ConfirmDialog>
   </main>;

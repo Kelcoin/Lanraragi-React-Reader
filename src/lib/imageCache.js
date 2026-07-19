@@ -2,10 +2,15 @@
 // On page reload after iOS process kill, images load from disk cache instantly
 // instead of re-fetching from network.
 const MEM_CACHE = new Map();
-const MAX_MEM = 200;
+const MAX_MEM_ENTRIES = 64;
 const DISK_CACHE = 'lrr-img-v3';
 import { imageCacheIndex } from './imageCacheIndex.js';
-import { resolveCacheLimit, selectCacheEvictions } from './cachePolicy.js';
+import {
+  resolveCacheLimit,
+  resolveMemoryImageCacheBudget,
+  selectCacheEvictions,
+  selectMemoryImageCacheEvictions,
+} from './cachePolicy.js';
 import { createImageLoadQueue, IMAGE_LOAD_PRIORITY } from './imageLoadQueue.js';
 import { getConfigScopeId, scopedCacheKey } from './configScope.js';
 
@@ -21,6 +26,8 @@ const retiredObjectUrlTimers = new Map();
 const imageLoadQueue = createImageLoadQueue({ maxConcurrent: 3 });
 const RETIRED_URL_GRACE_MS = 30 * 1000;
 const MAX_RETIRED_URLS = 200;
+const MAX_MEM_BYTES = resolveMemoryImageCacheBudget(globalThis.navigator?.deviceMemory);
+let memoryBytes = 0;
 
 function retireObjectUrl(objectUrl) {
   if (!objectUrl || retiredObjectUrlTimers.has(objectUrl)) return;
@@ -113,25 +120,50 @@ async function deleteDiskEntry(key) {
   await imageCacheIndex.delete(key);
 }
 
-function rememberBlob(key, blob) {
-  const objectUrl = URL.createObjectURL(blob);
-
-  if (MEM_CACHE.size >= MAX_MEM) {
-    const first = MEM_CACHE.keys().next().value;
-    if (first) {
-      const old = MEM_CACHE.get(first);
-      if (old?.objectUrl) retireObjectUrl(old.objectUrl);
-      MEM_CACHE.delete(first);
-    }
+function removeMemoryEntry(key, { retire = true } = {}) {
+  const entry = MEM_CACHE.get(key);
+  if (!entry) return;
+  if (entry.objectUrl) {
+    if (retire) retireObjectUrl(entry.objectUrl);
+    else URL.revokeObjectURL(entry.objectUrl);
   }
+  memoryBytes = Math.max(0, memoryBytes - (entry.blob?.size || 0));
+  MEM_CACHE.delete(key);
+}
 
-  MEM_CACHE.set(key, { objectUrl, blob });
+function getMemoryEntry(key) {
+  const entry = MEM_CACHE.get(key);
+  if (!entry) return null;
+  entry.lastAccessedAt = Date.now();
+  MEM_CACHE.delete(key);
+  MEM_CACHE.set(key, entry);
+  return entry;
+}
+
+function rememberBlob(key, blob) {
+  removeMemoryEntry(key);
+  const victims = selectMemoryImageCacheEvictions(
+    Array.from(MEM_CACHE, ([entryKey, entry]) => ({
+      key: entryKey,
+      size: entry.blob?.size || 0,
+      lastAccessedAt: entry.lastAccessedAt || 0,
+    })),
+    blob.size,
+    MAX_MEM_BYTES,
+    MAX_MEM_ENTRIES,
+  );
+  victims.forEach((victim) => removeMemoryEntry(victim));
+
+  const objectUrl = URL.createObjectURL(blob);
+  MEM_CACHE.set(key, { objectUrl, blob, lastAccessedAt: Date.now() });
+  memoryBytes += blob.size || 0;
   return objectUrl;
 }
 
 function scheduleImageLoad(key, fetcher, priority = IMAGE_LOAD_PRIORITY.NORMAL) {
   return imageLoadQueue.schedule(key, async () => {
-    if (MEM_CACHE.has(key)) return MEM_CACHE.get(key).blob;
+    const memoryEntry = getMemoryEntry(key);
+    if (memoryEntry) return memoryEntry.blob;
     let blob = await diskGet(key);
     if (!blob) {
       blob = await fetcher();
@@ -146,7 +178,7 @@ export async function primeImage(key, fetcher, { priority = IMAGE_LOAD_PRIORITY.
   if (!key || typeof fetcher !== 'function') return false;
   const scope = getConfigScopeId();
   key = scopedCacheKey(key);
-  if (MEM_CACHE.has(key)) return true;
+  if (getMemoryEntry(key)) return true;
   try {
     return !!(await scheduleImageLoad(key, () => fetchForScope(fetcher, scope), priority));
   } catch {
@@ -156,9 +188,8 @@ export async function primeImage(key, fetcher, { priority = IMAGE_LOAD_PRIORITY.
 
 export async function getCachedImage(key) {
   key = scopedCacheKey(key);
-  if (MEM_CACHE.has(key)) {
-    return MEM_CACHE.get(key).objectUrl;
-  }
+  const memoryEntry = getMemoryEntry(key);
+  if (memoryEntry) return memoryEntry.objectUrl;
   const blob = await diskGet(key);
   if (!blob) return null;
   return rememberBlob(key, blob);
@@ -169,14 +200,14 @@ export async function getImage(key, fetcher, { priority = IMAGE_LOAD_PRIORITY.NO
   const scope = getConfigScopeId();
   key = scopedCacheKey(key);
   // 1. Memory cache (instant)
-  if (MEM_CACHE.has(key)) {
-    return MEM_CACHE.get(key).objectUrl;
-  }
+  const memoryEntry = getMemoryEntry(key);
+  if (memoryEntry) return memoryEntry.objectUrl;
 
   let blob;
   try { blob = await scheduleImageLoad(key, () => fetchForScope(fetcher, scope), priority); } catch { return null; }
   if (!blob) return null;
-  if (MEM_CACHE.has(key)) return MEM_CACHE.get(key).objectUrl;
+  const loadedEntry = getMemoryEntry(key);
+  if (loadedEntry) return loadedEntry.objectUrl;
   return rememberBlob(key, blob);
 }
 
@@ -190,6 +221,7 @@ export async function clearImageCache({ disk = false } = {}) {
   }
   retiredObjectUrlTimers.clear();
   MEM_CACHE.clear();
+  memoryBytes = 0;
   lastIndexTouch.clear();
   if (cleanupTimer) { clearTimeout(cleanupTimer); cleanupTimer = null; }
   if (disk) {
@@ -207,9 +239,7 @@ export async function deleteImageKeys(keys) {
     .map((key) => scopedCacheKey(key))));
   if (scopedKeys.length === 0) return 0;
   await Promise.all(scopedKeys.map(async (key) => {
-    const entry = MEM_CACHE.get(key);
-    if (entry?.objectUrl) URL.revokeObjectURL(entry.objectUrl);
-    MEM_CACHE.delete(key);
+    removeMemoryEntry(key, { retire: false });
     lastIndexTouch.delete(key);
     await deleteDiskEntry(key);
   }));
