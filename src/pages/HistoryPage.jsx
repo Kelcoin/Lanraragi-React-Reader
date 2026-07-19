@@ -290,7 +290,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
         await removeHistoryItems([archiveId]);
         setHistoryState(getHistory());
         setArchiveDeleteTarget(null);
-        setNotice('归档已不存在于 LANraragi，相关历史记录已清理。');
+        setNotice('档案已不存在于 LANraragi，相关历史记录已清理。');
       } else {
         setNotice(`删除失败：${error?.message || '未知错误'}`);
       }
@@ -474,7 +474,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-sub)', fontSize: '14px' }}>
-              {query.trim() ? '没有匹配的阅读历史' : (hideRead && history.length > 0 ? '所有归档均已读完' : '暂无阅读历史')}
+              {query.trim() ? '没有匹配的阅读历史' : (hideRead && history.length > 0 ? '所有档案均已读完' : '暂无阅读历史')}
             </div>
           )}
         </section>
@@ -493,7 +493,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
       <ConfirmDialog
         open={!!deleteTarget}
         title="确认删除阅读记录"
-        message={deleteTarget ? (deleteTarget.batch ? `将选中的 ${deleteTarget.ids.length} 条记录从阅读历史中移除。再次阅读对应归档时会重新加入历史记录。` : `将“${deleteTarget.title}”从阅读历史中移除。再次阅读该归档时会重新加入历史记录。`) : ''}
+        message={deleteTarget ? (deleteTarget.batch ? `将选中的 ${deleteTarget.ids.length} 条记录从阅读历史中移除。再次阅读对应档案时会重新加入历史记录。` : `将“${deleteTarget.title}”从阅读历史中移除。再次阅读该档案时会重新加入历史记录。`) : ''}
         confirmLabel="确认删除"
         cancelLabel="取消"
         onConfirm={handleRemoveHistory}
@@ -501,7 +501,7 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
       />
       <ConfirmDialog
         open={!!archiveDeleteTarget}
-        title="确认删除归档"
+        title="确认删除档案"
         message={archiveDeleteTarget ? `将从 LANraragi 中删除“${archiveDeleteTarget.title || archiveDeleteTarget.arcid || archiveDeleteTarget.id}”。此操作不可撤销。` : ''}
         confirmLabel={archiveDeleting ? '删除中…' : '确认删除'}
         cancelLabel="取消"

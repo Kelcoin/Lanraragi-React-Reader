@@ -12,8 +12,30 @@ export function getReaderToolbarGroups(isMobile) {
   return isMobile ? MOBILE_TOOLBAR : DESKTOP_TOOLBAR;
 }
 
-export function isReaderMobileViewport(width, hasTouch) {
-  return width < 768 || hasTouch;
+export function isReaderMobileViewport(width) {
+  return width < 768;
+}
+
+function overlapWithMargin(first, second, margin = 0) {
+  return !(
+    first.right + margin <= second.left
+    || first.left - margin >= second.right
+    || first.bottom + margin <= second.top
+    || first.top - margin >= second.bottom
+  );
+}
+
+export function resolvePageIndicatorPlacement(previousMode, imageRect, baseRect, loweredShift, hysteresis = 6) {
+  if (!imageRect || !baseRect) return 'pinned';
+  if (previousMode === 'hidden' && overlapWithMargin(imageRect, baseRect, hysteresis)) return 'hidden';
+  const margin = previousMode === 'lowered' ? hysteresis : 0;
+  if (!overlapWithMargin(imageRect, baseRect, margin)) return 'pinned';
+  const loweredRect = {
+    ...baseRect,
+    top: baseRect.top + loweredShift,
+    bottom: baseRect.bottom + loweredShift,
+  };
+  return overlapWithMargin(imageRect, loweredRect, margin) ? 'hidden' : 'lowered';
 }
 
 export function shouldUseCompactReaderToolbar({
@@ -81,7 +103,7 @@ export function getReaderArchivePanelModel(type, sources) {
   if (type === 'watchlist') {
     return {
       type,
-      title: '待看归档',
+      title: '待看档案',
       items: sources.watchlistItems,
       emptyMessage: sources.watchlistEmptyMessage,
       onDelete: sources.removeWatchlist,

@@ -3,6 +3,19 @@ import test from 'node:test';
 import * as readerUiState from '../src/lib/readerUiState.js';
 import { resolveReaderToolbarMode } from '../src/lib/readerUiState.js';
 
+test('reader compact layout follows viewport width rather than touch capability', () => {
+  assert.equal(readerUiState.isReaderMobileViewport(767, false), true);
+  assert.equal(readerUiState.isReaderMobileViewport(1024, true), false);
+});
+
+test('page indicator placement uses hysteresis at overlap boundaries', () => {
+  const image = { left: 0, right: 100, top: 0, bottom: 100 };
+  const clear = { left: 20, right: 80, top: 108, bottom: 128 };
+  const borderline = { left: 20, right: 80, top: 102, bottom: 122 };
+  assert.equal(readerUiState.resolvePageIndicatorPlacement('hidden', image, borderline, 8), 'hidden');
+  assert.equal(readerUiState.resolvePageIndicatorPlacement('hidden', image, clear, 8), 'pinned');
+});
+
 test('reader toolbar title uses the symmetric space left between control groups', () => {
   assert.equal(typeof readerUiState.getCenteredToolbarTitleWidth, 'function');
   assert.equal(readerUiState.getCenteredToolbarTitleWidth({

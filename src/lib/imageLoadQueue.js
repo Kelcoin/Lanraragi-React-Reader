@@ -70,3 +70,70 @@ export function createImageLoadQueue({ maxConcurrent = 3 } = {}) {
 
   return { schedule };
 }
+
+function abortError() {
+  return new DOMException('Image decode cancelled', 'AbortError');
+}
+
+export function createImageDecodeQueue() {
+  const queued = [];
+  let active = null;
+  let sequence = 0;
+
+  function pump() {
+    if (active || queued.length === 0) return;
+    queued.sort((a, b) => (b.priority - a.priority) || (a.sequence - b.sequence));
+    const job = queued.shift();
+    if (job.controller.signal.aborted) {
+      job.reject(abortError());
+      pump();
+      return;
+    }
+    active = job;
+    Promise.resolve()
+      .then(() => job.task(job.controller.signal))
+      .then(
+        (value) => {
+          job.settled = true;
+          job.resolve(value);
+        },
+        (error) => {
+          job.settled = true;
+          job.reject(error);
+        },
+      )
+      .finally(() => {
+        if (active === job) active = null;
+        pump();
+      });
+  }
+
+  function schedule(key, task, priority = IMAGE_LOAD_PRIORITY.NORMAL) {
+    const controller = new AbortController();
+    const job = { key, task, priority, sequence: sequence++, controller };
+    job.promise = new Promise((resolve, reject) => {
+      job.resolve = resolve;
+      job.reject = reject;
+    });
+    job.cancel = () => {
+      if (job.settled || controller.signal.aborted) return;
+      controller.abort();
+      const index = queued.indexOf(job);
+      if (index >= 0) {
+        queued.splice(index, 1);
+        job.settled = true;
+        job.reject(abortError());
+      }
+    };
+    queued.push(job);
+    pump();
+    return { promise: job.promise, cancel: job.cancel };
+  }
+
+  function cancelAll() {
+    active?.cancel();
+    [...queued].forEach((job) => job.cancel());
+  }
+
+  return { schedule, cancelAll };
+}

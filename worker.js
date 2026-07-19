@@ -1235,7 +1235,7 @@ async function statusPage(request) {
   <div class="stat"><span class="label">待看记录数</span><span class="value">${watchlistCount}</span></div>
   <div class="stat"><span class="label">KV 存储</span><span class="${hasKV ? 'ok' : 'warn'}">${hasKV ? '已绑定' : '未绑定'}</span></div>
   <div class="stat"><span class="label">KV 读取</span><span class="${kvOk ? 'ok' : 'err'}">${kvOk ? '正常' : '失败'}</span></div>
-  <div class="stat"><span class="label">非重复归档记录</span><span class="value">${dedupeCount}</span></div>
+  <div class="stat"><span class="label">非重复档案记录</span><span class="value">${dedupeCount}</span></div>
 
   <div class="divider"></div>
   <div class="section-title">认证状态</div>
@@ -1265,7 +1265,7 @@ async function statusPage(request) {
       <input id="serverScopeInput" type="text" inputmode="text" maxlength="32" placeholder="服务器地址 MD5（32 位小写十六进制）">
       <div class="checks">
         <label><input id="sectionHistory" type="checkbox" checked style="width:auto"> 阅读历史</label>
-        <label><input id="sectionWatchlist" type="checkbox" checked style="width:auto"> 待看归档</label>
+        <label><input id="sectionWatchlist" type="checkbox" checked style="width:auto"> 待看档案</label>
         <label><input id="sectionDedupe" type="checkbox" checked style="width:auto"> 非重复 arcid</label>
       </div>
       <div class="tool-actions"><button id="exportBtn" type="button">导出选中数据</button></div>

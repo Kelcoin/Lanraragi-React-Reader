@@ -152,6 +152,12 @@ export function findSpreadIndex(spreads, location) {
   return spreads.findIndex((spread) => spread.some((unit) => unit.pageIndex === pageIndex));
 }
 
+export function getReaderDecodeWindow(spreads, currentSpreadIndex) {
+  if (!Array.isArray(spreads) || spreads.length === 0) return [];
+  const current = Math.max(0, Math.min(Number(currentSpreadIndex) || 0, spreads.length - 1));
+  return spreads.slice(Math.max(0, current - 1), Math.min(spreads.length, current + 2));
+}
+
 export function getAdjacentSpreadLocation(spreads, location, delta) {
   if (!Array.isArray(spreads) || spreads.length === 0) return null;
   const current = Math.max(0, findSpreadIndex(spreads, location));

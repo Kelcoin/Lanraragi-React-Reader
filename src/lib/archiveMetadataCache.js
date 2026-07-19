@@ -54,8 +54,14 @@ function isMissingArchiveError(error) {
   return error?.status === 400 || error?.status === 404;
 }
 
-export function rememberArchiveMetadata(archive) {
-  return rememberArchiveMetadataForScope(archive, getConfigScopeId());
+export function rememberArchiveMetadata(archive, { immediate = false } = {}) {
+  const metadata = rememberArchiveMetadataForScope(archive, getConfigScopeId());
+  if (metadata && immediate) {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = null;
+    persistMetadataCache();
+  }
+  return metadata;
 }
 
 function rememberArchiveMetadataForScope(archive, scope) {

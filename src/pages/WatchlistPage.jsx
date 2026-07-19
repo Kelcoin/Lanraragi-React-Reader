@@ -176,7 +176,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      prompt('复制归档链接:', url);
+      prompt('复制档案链接:', url);
     }
   }, []);
 
@@ -197,10 +197,10 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
           <div>
             <h1 style={{ fontWeight: 600, margin: '0 0 8px 0', fontSize: '28px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <HeaderGlyph />
-              待看归档
+              待看档案
             </h1>
             <div style={{ color: 'var(--text-sub)', fontSize: '14px' }}>
-              共 {items.length} 个归档{query.trim() ? `，当前显示 ${filteredItems.length} 个` : ''}
+              共 {items.length} 个档案{query.trim() ? `，当前显示 ${filteredItems.length} 个` : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -210,7 +210,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
               onClick={handleSync}
               disabled={!getWorkerUrl() || !getSyncToken() || syncing}
               style={{ fontSize: '13px', opacity: !getWorkerUrl() || !getSyncToken() ? 0.5 : 1 }}
-              title={!getWorkerUrl() || !getSyncToken() ? '配置 Worker 后可从远端读取待看归档' : '从 Worker 刷新待看归档'}
+              title={!getWorkerUrl() || !getSyncToken() ? '配置 Worker 后可从远端读取待看档案' : '从 Worker 刷新待看档案'}
             >
               {syncing ? '刷新中' : '刷新'}
             </button>
@@ -252,7 +252,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
                 )}
               </div>
             </div>
-            <ArchiveSearchBox query={query} setQuery={setQuery} placeholder="在待看归档中搜索标题或标签" />
+            <ArchiveSearchBox query={query} setQuery={setQuery} placeholder="在待看档案中搜索标题或标签" />
           </div>
 
           {filteredItems.length > 0 ? (
@@ -272,7 +272,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
                           event.stopPropagation();
                           toggleSelection(item.id, event);
                         }}
-                        title="选择待看归档"
+                        title="选择待看档案"
                         style={{
                           position: 'absolute',
                           zIndex: 5,
@@ -314,7 +314,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
             </ArchiveGrid>
           ) : (
             <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-sub)', fontSize: '14px' }}>
-              {items.length > 0 ? '没有匹配的待看归档' : '暂无待看归档'}
+              {items.length > 0 ? '没有匹配的待看档案' : '暂无待看档案'}
             </div>
           )}
         </section>
@@ -333,7 +333,7 @@ export default function WatchlistPage({ onSelectArchive, onBack }) {
       <ConfirmDialog
         open={!!deleteTarget}
         title="确认移除待看"
-        message={deleteTarget ? (deleteTarget.batch ? `将选中的 ${deleteTarget.ids.length} 个归档从待看中移除。` : `将“${deleteTarget.title}”从待看中移除。`) : ''}
+        message={deleteTarget ? (deleteTarget.batch ? `将选中的 ${deleteTarget.ids.length} 个档案从待看中移除。` : `将“${deleteTarget.title}”从待看中移除。`) : ''}
         confirmLabel="确认移除"
         cancelLabel="取消"
         onConfirm={handleRemove}

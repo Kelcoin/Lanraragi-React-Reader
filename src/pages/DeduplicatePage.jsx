@@ -2,16 +2,23 @@ import React, { useCallback, useMemo, useState } from 'react';
 import ArchiveCard from '../components/ArchiveCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EhFavoriteDeleteSwitch from '../components/EhFavoriteDeleteSwitch';
+import DedupeArchiveContextMenu from '../components/DedupeArchiveContextMenu';
+import ArchiveThumbnailDialog from '../components/ArchiveThumbnailDialog';
+import DatePicker from '../components/DatePicker';
 import { lrrApi, waitForMinionJob } from '../lib/api';
+import { rememberArchiveMetadata } from '../lib/archiveMetadataCache';
 import {
   buildDuplicateGroups,
+  createDedupeSavedResultPayload,
   createCoverSignature,
   DEDUPE_DEFAULT_START_DATE,
   filterArchivesByDateRange,
   filterDuplicateGroupsForSavedState,
   findDuplicatePairsAsync,
+  getDuplicateSelectionDisabledIds,
   getTodayDateString,
   normalizeDedupeDateRange,
+  normalizeDuplicateSelection,
   selectDuplicateDeletionIds,
   toPairKey,
 } from '../lib/deduplicate';
@@ -189,16 +196,30 @@ function ProgressPanel({ progress, running }) {
   );
 }
 
-function StatsPanel({ stats, ignoredCount }) {
+function StatsPanel({
+  stats,
+  ignoredCount,
+  allGroupsSelected,
+  allGroupsDisabled,
+  selectedArchiveCount,
+  selectedGroupCount,
+  running,
+  onSmartSelect,
+  onToggleAllGroups,
+  onDeleteSelected,
+  onMarkSelectedGroups,
+}) {
   if (!stats) return null;
   const items = [
-    ['全部归档', stats.totalArchiveCount ?? stats.archiveCount],
+    ['全部档案', stats.totalArchiveCount ?? stats.archiveCount],
     ['范围内', stats.archiveCount],
     ['范围外', stats.outOfRange ?? 0],
     ['有效封面', stats.signatureCount],
     ['已排除', stats.missing],
     ['疑似重复', stats.pairCount],
     ['已忽略组合', ignoredCount],
+    ['选中档案', selectedArchiveCount],
+    ['选中分组', selectedGroupCount],
   ];
   return (
     <div className="glass-panel" style={{ padding: '14px 16px', marginBottom: '16px', borderRadius: '12px' }}>
@@ -206,7 +227,7 @@ function StatsPanel({ stats, ignoredCount }) {
         <div style={{ fontWeight: 800, fontSize: '14px' }}>本次扫描</div>
         {stats.missing > 0 && (
           <div style={{ color: 'var(--text-sub)', fontSize: '12px' }}>
-            缺失封面的归档已排除，不参与相似度计算
+            缺失封面的档案已排除，不参与相似度计算
           </div>
         )}
       </div>
@@ -229,45 +250,104 @@ function StatsPanel({ stats, ignoredCount }) {
           </div>
         ))}
       </div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '12px' }}>
+        <button type="button" className="btn" onClick={onSmartSelect} disabled={allGroupsDisabled}>智能选择</button>
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={allGroupsSelected}
+          onClick={onToggleAllGroups}
+          disabled={allGroupsDisabled}
+        >
+          {allGroupsSelected ? '取消全选' : '全选分组'}
+        </button>
+        <button type="button" className="btn" onClick={onDeleteSelected} disabled={running || selectedArchiveCount === 0}>
+          删除选中
+        </button>
+        <button type="button" className="btn" onClick={onMarkSelectedGroups} disabled={running || selectedGroupCount === 0}>
+          标记分组不重复
+        </button>
+      </div>
     </div>
   );
 }
 
-function DateRangePanel({ range, running, onChange, onReset }) {
+function DateRangePanel({ range, running, onChange, onReset, onStart }) {
   return (
     <div className="glass-panel" style={{ padding: '14px 16px', marginBottom: '16px', borderRadius: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 800, fontSize: '14px' }}>检测时间范围</div>
+          <div style={{ fontWeight: 800, fontSize: '14px' }}>检测范围</div>
           <div style={{ marginTop: '4px', color: 'var(--text-sub)', fontSize: '12px', lineHeight: 1.45 }}>
-            按归档入库日期筛选，默认范围包含全部归档
+            按档案入库日期筛选，默认范围包含全部档案
           </div>
         </div>
-        <button type="button" className="btn" onClick={onReset} disabled={running} style={{ padding: '7px 12px', fontSize: '12px' }}>
-          重置为全部
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button type="button" className="btn" onClick={onReset} disabled={running} style={{ padding: '7px 12px', fontSize: '12px' }}>重置</button>
+          <button type="button" className="btn" onClick={onStart} disabled={running} style={{ padding: '7px 12px', fontSize: '12px' }}>
+            {running ? '处理中...' : '开始检测'}
+          </button>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'end' }}>
         <label style={{ display: 'grid', gap: '6px', color: 'var(--text-sub)', fontSize: '12px' }}>
           开始日期
-          <input
-            className="dedupe-date-input"
-            type="date"
+          <DatePicker
             value={range.start}
             disabled={running}
-            onChange={(event) => onChange({ ...range, start: event.target.value })}
+            ariaLabel="开始日期"
+            onChange={(value) => onChange({ ...range, start: value })}
           />
         </label>
         <label style={{ display: 'grid', gap: '6px', color: 'var(--text-sub)', fontSize: '12px' }}>
           结束日期
-          <input
-            className="dedupe-date-input"
-            type="date"
+          <DatePicker
             value={range.end}
             disabled={running}
-            onChange={(event) => onChange({ ...range, end: event.target.value })}
+            ariaLabel="结束日期"
+            onChange={(value) => onChange({ ...range, end: value })}
           />
         </label>
+      </div>
+    </div>
+  );
+}
+
+function DedupeArchiveItem({
+  archive,
+  selected,
+  selectionDisabled,
+  showProgressBar,
+  reserveProgressSpace,
+  onToggle,
+  onContextMenu,
+}) {
+  const pageCount = Number(archive.pagecount ?? archive.total) || 0;
+  return (
+    <div
+      className={`dedupe-card-item${selectionDisabled ? ' is-selection-disabled' : ''}`}
+      onClick={(event) => event.stopPropagation()}
+      title={selectionDisabled ? '与当前选择冲突；每组最多删除一个，且每个重复关系至少保留一个档案' : undefined}
+    >
+      <ArchiveCard
+        archive={archive}
+        showProgressBar={showProgressBar}
+        reserveProgressSpace={reserveProgressSpace}
+        onClick={() => onToggle(archive)}
+        onArchiveContextMenu={onContextMenu}
+        noCrop
+        selectionMode
+        selected={selected}
+        onSelectToggle={onToggle}
+        disabled={selectionDisabled}
+        overlay={selected ? (
+          <div className="dedupe-card-selected-mark">✓</div>
+        ) : null}
+      />
+      <div className="dedupe-card-size-row">
+        <div className="dedupe-card-size">
+          {formatBytes(archive.size) || '体积未知'} · {pageCount > 0 ? `${pageCount}页` : '页数未知'}
+        </div>
       </div>
     </div>
   );
@@ -311,6 +391,8 @@ export default function DeduplicatePage({ onBack }) {
   const [progress, setProgress] = useState(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteSyncConfirmed, setDeleteSyncConfirmed] = useState(true);
+  const [archiveMenu, setArchiveMenu] = useState(null);
+  const [thumbnailArchive, setThumbnailArchive] = useState(null);
   const [dateRange, setDateRange] = useState(() => ({
     start: DEDUPE_DEFAULT_START_DATE,
     end: getTodayDateString(),
@@ -320,16 +402,34 @@ export default function DeduplicatePage({ onBack }) {
   const selectedArchives = useMemo(() => (
     Array.from(selectedArchiveIds).map((id) => archiveMap.get(id)).filter(Boolean)
   ), [archiveMap, selectedArchiveIds]);
+  const selectionDisabledIds = useMemo(() => (
+    getDuplicateSelectionDisabledIds(groups, selectedArchiveIds)
+  ), [groups, selectedArchiveIds]);
   const ehFavoriteDeleteSync = getEhFavoriteDeleteSync();
+
+  const handleOpenArchiveMenu = useCallback((archive, point) => {
+    setArchiveMenu({ archive, x: point.x, y: point.y });
+  }, []);
+
+  const openArchiveInNewTab = useCallback((archive) => {
+    const id = archiveId(archive);
+    if (!id) return;
+    rememberArchiveMetadata(archive, { immediate: true });
+    window.open(`/?id=${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const openArchiveThumbnails = useCallback((archive) => {
+    setThumbnailArchive(archive);
+  }, []);
 
   const loadAllArchives = useCallback(async () => {
     const all = [];
     let start = 0;
     let total = null;
     while (true) {
-      setStatus('正在获取归档列表');
+      setStatus('正在获取档案列表');
       setProgress({
-        label: '获取归档列表',
+        label: '获取档案列表',
         current: all.length,
         total: Number.isFinite(total) ? total : null,
         detail: Number.isFinite(total) ? `${all.length} / ${total}` : `已获取 ${all.length}`,
@@ -340,7 +440,7 @@ export default function DeduplicatePage({ onBack }) {
       all.push(...data);
       total = getSearchTotal(res, data.length, total);
       const nextStart = start + data.length;
-      if (nextStart <= start) throw new Error('归档分页未前进，已停止扫描');
+      if (nextStart <= start) throw new Error('档案分页未前进，已停止扫描');
       start = nextStart;
       if (Number.isFinite(total) && all.length >= total) break;
     }
@@ -416,11 +516,11 @@ export default function DeduplicatePage({ onBack }) {
           current: signatures.size,
           total: scopedArchives.length,
           detail: missing > 0
-            ? `已排除 ${missing} 个缺失封面的归档；有效封面不足 2 个，无法进行比较`
+            ? `已排除 ${missing} 个缺失封面的档案；有效封面不足 2 个，无法进行比较`
             : '有效封面不足 2 个，无法进行比较',
         });
         setStatus(missing > 0
-          ? `检测完成，已排除 ${missing} 个缺失封面的归档`
+          ? `检测完成，已排除 ${missing} 个缺失封面的档案`
           : '检测完成，有效封面不足');
         return;
       }
@@ -430,7 +530,7 @@ export default function DeduplicatePage({ onBack }) {
         current: 0,
         total: signatures.size,
         detail: missing > 0
-          ? `按 LRReader 规则比较缩略图，已排除 ${missing} 个缺失封面的归档`
+          ? `按 LRReader 规则比较缩略图，已排除 ${missing} 个缺失封面的档案`
           : '按 LRReader 规则比较缩略图',
       });
       const pairs = await findDuplicatePairsAsync(signatures, ignoredSet, {
@@ -458,7 +558,7 @@ export default function DeduplicatePage({ onBack }) {
         total: 1,
         detail: [
           nextGroups.length ? `发现 ${nextGroups.length} 组疑似重复` : '未发现疑似重复',
-          missing > 0 ? `已排除 ${missing} 个缺失封面的归档` : '',
+          missing > 0 ? `已排除 ${missing} 个缺失封面的档案` : '',
         ].filter(Boolean).join('，'),
       });
       setStatus(nextGroups.length
@@ -475,22 +575,18 @@ export default function DeduplicatePage({ onBack }) {
   const toggleArchiveSelection = useCallback((archive) => {
     const id = archiveId(archive);
     if (!id) return;
-    const ownerGroup = groups.find((group) => groupIds(group).includes(id));
     setSelectedArchiveIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    if (ownerGroup) {
-      const key = groupKey(ownerGroup);
-      setSelectedGroupKeys((prev) => {
-        if (!prev.has(key)) return prev;
+      if (prev.has(id)) {
         const next = new Set(prev);
-        next.delete(key);
+        next.delete(id);
         return next;
-      });
-    }
+      }
+      return new Set(normalizeDuplicateSelection(groups, [...prev, id]));
+    });
+    const ownerGroupKeys = new Set(groups
+      .filter((group) => groupIds(group).includes(id))
+      .map(groupKey));
+    setSelectedGroupKeys((prev) => new Set(Array.from(prev).filter((key) => !ownerGroupKeys.has(key))));
   }, [groups]);
 
   const toggleGroupSelection = useCallback((group) => {
@@ -510,11 +606,8 @@ export default function DeduplicatePage({ onBack }) {
   }, []);
 
   const smartSelect = useCallback(() => {
-    const ids = new Set();
-    groups.forEach((group) => {
-      selectDuplicateDeletionIds(group).forEach((id) => ids.add(id));
-    });
-    setSelectedArchiveIds(ids);
+    const candidates = groups.flatMap((group) => selectDuplicateDeletionIds(group).slice(0, 1));
+    setSelectedArchiveIds(new Set(normalizeDuplicateSelection(groups, candidates)));
     setSelectedGroupKeys(new Set());
   }, [groups]);
 
@@ -542,6 +635,42 @@ export default function DeduplicatePage({ onBack }) {
     setDeletePending(true);
   }, []);
 
+  const syncSavedResult = useCallback((nextGroups, {
+    nextStatus = status,
+    nextSelectedArchiveIds = selectedArchiveIds,
+    nextSelectedGroupKeys = selectedGroupKeys,
+  } = {}) => {
+    if (!savedResultAvailable) return;
+    try {
+      const key = scopedStorageKey(DEDUPE_SAVED_RESULT_KEY);
+      const payload = createDedupeSavedResultPayload({
+        groups: nextGroups,
+        dateRange,
+        status: nextStatus,
+        lastScanStats,
+        workerWarning,
+        selectedArchiveIds: nextSelectedArchiveIds,
+        selectedGroupKeys: nextSelectedGroupKeys,
+      });
+      if (!payload) {
+        localStorage.removeItem(key);
+        setSavedResultAvailable(false);
+        return;
+      }
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch (err) {
+      alert(err.message || '更新保存结果失败，浏览器存储空间可能不足');
+    }
+  }, [
+    dateRange,
+    lastScanStats,
+    savedResultAvailable,
+    selectedArchiveIds,
+    selectedGroupKeys,
+    status,
+    workerWarning,
+  ]);
+
   const deleteSelectedArchives = useCallback(async () => {
     if (selectedArchives.length === 0) return;
 
@@ -561,18 +690,25 @@ export default function DeduplicatePage({ onBack }) {
     }
 
     const deletedSet = new Set(deleted);
-    setArchives((prev) => prev.filter((archive) => !deletedSet.has(archiveId(archive))));
-    setGroups((prev) => prev
+    const nextGroups = groups
       .map((group) => group.filter((archive) => !deletedSet.has(archiveId(archive))))
-      .filter((group) => group.length > 1));
+      .filter((group) => group.length > 1);
+    const nextStatus = failures.length ? `已删除 ${deleted.length} 个，${failures.length} 个失败` : `已删除 ${deleted.length} 个档案`;
+    setArchives((prev) => prev.filter((archive) => !deletedSet.has(archiveId(archive))));
+    setGroups(nextGroups);
     setProcessedDeletedArchiveIds((prev) => new Set([...prev, ...deleted]));
     setSelectedArchiveIds(new Set());
     setSelectedGroupKeys(new Set());
     setDeletePending(false);
     setRunning(false);
-    setStatus(failures.length ? `已删除 ${deleted.length} 个，${failures.length} 个失败` : `已删除 ${deleted.length} 个归档`);
+    setStatus(nextStatus);
+    syncSavedResult(nextGroups, {
+      nextStatus,
+      nextSelectedArchiveIds: [],
+      nextSelectedGroupKeys: [],
+    });
     if (failures.length) alert(failures.slice(0, 5).join('\n') + (failures.length > 5 ? '\n...' : ''));
-  }, [deleteSyncConfirmed, selectedArchives, syncEhFavoriteBeforeDelete]);
+  }, [deleteSyncConfirmed, groups, selectedArchives, syncEhFavoriteBeforeDelete, syncSavedResult]);
 
   const markSelectedGroups = useCallback(async () => {
     const selectedGroups = groups.filter((group) => selectedGroupKeys.has(groupKey(group)));
@@ -586,35 +722,39 @@ export default function DeduplicatePage({ onBack }) {
       setIgnoredPairs(pairSet);
       setProcessedNonDuplicatePairKeys((prev) => new Set([...prev, ...pairs]));
       const selectedKeys = new Set(selectedGroups.map(groupKey));
-      setGroups((prev) => prev.filter((group) => !selectedKeys.has(groupKey(group))));
+      const nextGroups = groups.filter((group) => !selectedKeys.has(groupKey(group)));
+      const nextStatus = `已标记 ${selectedGroups.length} 组为不重复`;
+      setGroups(nextGroups);
       setSelectedGroupKeys(new Set());
       setSelectedArchiveIds(new Set());
-      setStatus(`已标记 ${selectedGroups.length} 组为不重复`);
+      setStatus(nextStatus);
+      syncSavedResult(nextGroups, {
+        nextStatus,
+        nextSelectedArchiveIds: [],
+        nextSelectedGroupKeys: [],
+      });
     } catch (err) {
       alert(err.message || '标记失败，请检查 Worker 与访问 Token');
       setStatus('标记失败');
     } finally {
       setRunning(false);
     }
-  }, [groups, ignoredPairs, selectedGroupKeys]);
+  }, [groups, ignoredPairs, selectedGroupKeys, syncSavedResult]);
 
   const saveResult = useCallback(() => {
-    const selectedVisibleGroupKeys = new Set(groups.map(groupKey));
-    const payload = {
-      version: 1,
-      savedAt: new Date().toISOString(),
+    const payload = createDedupeSavedResultPayload({
+      groups,
       dateRange,
       status,
-      archives,
-      groups: groupsToIdGroups(groups),
       lastScanStats,
       workerWarning,
-      selectedArchiveIds: Array.from(selectedArchiveIds),
-      selectedGroupKeys: Array.from(selectedGroupKeys).filter((key) => selectedVisibleGroupKeys.has(key)),
-      processedDeletedArchiveIds: Array.from(processedDeletedArchiveIds),
-      processedNonDuplicatePairKeys: Array.from(processedNonDuplicatePairKeys),
-      ignoredPairs: Array.from(ignoredPairs),
-    };
+      selectedArchiveIds,
+      selectedGroupKeys,
+    });
+    if (!payload) {
+      setStatus('没有可保存的重复分组');
+      return;
+    }
     try {
       localStorage.setItem(scopedStorageKey(DEDUPE_SAVED_RESULT_KEY), JSON.stringify(payload));
       setSavedResultAvailable(true);
@@ -623,13 +763,9 @@ export default function DeduplicatePage({ onBack }) {
       alert(err.message || '保存失败，浏览器存储空间可能不足');
     }
   }, [
-    archives,
     dateRange,
     groups,
-    ignoredPairs,
     lastScanStats,
-    processedDeletedArchiveIds,
-    processedNonDuplicatePairKeys,
     selectedArchiveIds,
     selectedGroupKeys,
     status,
@@ -646,8 +782,9 @@ export default function DeduplicatePage({ onBack }) {
       const payload = JSON.parse(raw);
       const nextArchives = Array.isArray(payload.archives) ? payload.archives : [];
       const archiveById = new Map(nextArchives.map((archive) => [archiveId(archive), archive]));
-      const deletedSet = new Set(payload.processedDeletedArchiveIds || []);
-      const nonDuplicateSet = new Set(payload.processedNonDuplicatePairKeys || []);
+      const legacyState = Number(payload.version) < 2;
+      const deletedSet = new Set(legacyState ? (payload.processedDeletedArchiveIds || []) : []);
+      const nonDuplicateSet = new Set(legacyState ? (payload.processedNonDuplicatePairKeys || []) : []);
       const restoredGroups = filterGroupsByProcessedState(
         (payload.groups || [])
           .map((ids) => (ids || []).map((id) => archiveById.get(String(id))).filter(Boolean))
@@ -659,11 +796,12 @@ export default function DeduplicatePage({ onBack }) {
       const visibleGroupKeys = new Set(restoredGroups.map(groupKey));
       setArchives(nextArchives.filter((archive) => !deletedSet.has(archiveId(archive))));
       setGroups(restoredGroups);
-      setSelectedArchiveIds(new Set((payload.selectedArchiveIds || []).filter((id) => visibleArchiveIds.has(id))));
+      const restoredSelection = (payload.selectedArchiveIds || []).filter((id) => visibleArchiveIds.has(id));
+      setSelectedArchiveIds(new Set(normalizeDuplicateSelection(restoredGroups, restoredSelection)));
       setSelectedGroupKeys(new Set((payload.selectedGroupKeys || []).filter((key) => visibleGroupKeys.has(key))));
       setProcessedDeletedArchiveIds(deletedSet);
       setProcessedNonDuplicatePairKeys(nonDuplicateSet);
-      setIgnoredPairs(new Set(payload.ignoredPairs || []));
+      setIgnoredPairs(new Set(Array.isArray(payload.ignoredPairs) ? payload.ignoredPairs : []));
       setDateRange(normalizeDedupeDateRange(payload.dateRange?.start, payload.dateRange?.end, getTodayDateString()));
       setLastScanStats(payload.lastScanStats || null);
       setWorkerWarning(payload.workerWarning || '');
@@ -688,19 +826,15 @@ export default function DeduplicatePage({ onBack }) {
   const allGroupsSelected = groups.length > 0 && selectedGroupKeys.size === groups.length;
 
   return (
-    <div style={{ minHeight: '100vh', padding: '22px', maxWidth: '1320px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', padding: '22px', maxWidth: '1800px', margin: '0 auto' }}>
       <header style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '24px', lineHeight: 1.2 }}>重复归档检测</h1>
+          <h1 style={{ margin: 0, fontSize: '24px', lineHeight: 1.2 }}>重复档案检测</h1>
           <div style={{ color: 'var(--text-sub)', fontSize: '13px', marginTop: '6px' }}>{status}</div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button type="button" className="btn" onClick={onBack} disabled={running}>返回</button>
-          <button type="button" className="btn" onClick={runDetection} disabled={running}>{running ? '处理中...' : '开始检测'}</button>
-          <button type="button" className="btn" onClick={smartSelect} disabled={running || groups.length === 0}>智能选择</button>
-          <button type="button" className="btn" onClick={requestDeleteSelectedArchives} disabled={running || selectedArchiveIds.size === 0}>删除选中 ({selectedArchiveIds.size})</button>
-          <button type="button" className="btn" onClick={markSelectedGroups} disabled={running || selectedGroupKeys.size === 0}>标记分组不重复 ({selectedGroupKeys.size})</button>
-          <button type="button" className="btn" onClick={saveResult} disabled={running || (!lastScanStats && groups.length === 0)}>保存结果</button>
+          <button type="button" className="btn" onClick={saveResult} disabled={running || groups.length === 0}>保存结果</button>
           <button type="button" className="btn" onClick={loadSavedResult} disabled={running || !savedResultAvailable}>载入保存</button>
           <button type="button" className="btn" onClick={deleteSavedResult} disabled={running || !savedResultAvailable}>删除保存</button>
         </div>
@@ -711,6 +845,7 @@ export default function DeduplicatePage({ onBack }) {
         running={running}
         onChange={setDateRange}
         onReset={resetDateRange}
+        onStart={runDetection}
       />
 
       <ProgressPanel progress={progress} running={running} />
@@ -721,26 +856,28 @@ export default function DeduplicatePage({ onBack }) {
         </div>
       )}
 
-      <StatsPanel stats={lastScanStats} ignoredCount={ignoredPairs.size} />
+      <StatsPanel
+        stats={lastScanStats}
+        ignoredCount={ignoredPairs.size}
+        allGroupsSelected={allGroupsSelected}
+        allGroupsDisabled={running || groups.length === 0}
+        selectedArchiveCount={selectedArchiveIds.size}
+        selectedGroupCount={selectedGroupKeys.size}
+        running={running}
+        onSmartSelect={smartSelect}
+        onToggleAllGroups={() => {
+          setSelectedGroupKeys(allGroupsSelected ? new Set() : new Set(groups.map(groupKey)));
+          setSelectedArchiveIds(new Set());
+        }}
+        onDeleteSelected={requestDeleteSelectedArchives}
+        onMarkSelectedGroups={markSelectedGroups}
+      />
 
-      {groups.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', color: 'var(--text-sub)', fontSize: '13px' }}>
-          <input
-            type="checkbox"
-            checked={allGroupsSelected}
-            onChange={() => {
-              setSelectedGroupKeys(allGroupsSelected ? new Set() : new Set(groups.map(groupKey)));
-              setSelectedArchiveIds(new Set());
-            }}
-          />
-          <span>选择全部分组标记为不重复</span>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+      <div className="dedupe-groups-grid">
         {groups.map((group, groupIndex) => (
           <section
             key={groupKey(group)}
+            className={`dedupe-group${selectedGroupKeys.has(groupKey(group)) ? ' is-selected' : ''}`}
             onClick={() => toggleGroupSelection(group)}
             style={{
               position: 'relative',
@@ -753,9 +890,6 @@ export default function DeduplicatePage({ onBack }) {
                 ? 'rgba(251,191,36,0.08)'
                 : 'rgba(255,255,255,0.025)',
               cursor: 'pointer',
-              boxShadow: selectedGroupKeys.has(groupKey(group))
-                ? '0 12px 34px rgba(251,191,36,0.08)'
-                : 'none',
             }}
           >
             <div style={{
@@ -775,62 +909,25 @@ export default function DeduplicatePage({ onBack }) {
             }}>
               疑似重复 {groupIndex + 1}
             </div>
-            {selectedGroupKeys.has(groupKey(group)) && (
-              <div style={{ textAlign: 'center', color: '#fbbf24', fontSize: '12px', marginBottom: '12px', fontWeight: 700 }}>
-                已选择整组标记为不重复
+            <div className="dedupe-group-selection-message" aria-hidden={!selectedGroupKeys.has(groupKey(group))}>
+              <div>
+                <div className="dedupe-group-selection-message-content">已选择整组标记为不重复</div>
               </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '18px', justifyItems: 'center' }}>
+            </div>
+            <div className="dedupe-group-cards">
               {group.map((archive) => {
                 const id = archiveId(archive);
                 return (
-                  <div
+                  <DedupeArchiveItem
                     key={id}
-                    onClick={(event) => event.stopPropagation()}
-                    style={{ display: 'grid', justifyItems: 'center', gap: '8px' }}
-                  >
-                    <ArchiveCard
-                      archive={archive}
-                      showProgressBar={showGlobalArchiveProgress}
-                      reserveProgressSpace={reserveGlobalProgressSpace}
-                      onClick={() => toggleArchiveSelection(archive)}
-                      noCrop
-                      selectionMode
-                      selected={selectedArchiveIds.has(id)}
-                      onSelectToggle={toggleArchiveSelection}
-                      overlay={selectedArchiveIds.has(id) ? (
-                        <div style={{
-                          position: 'absolute',
-                          top: '-8px',
-                          right: '-8px',
-                          zIndex: 3,
-                          width: '26px',
-                          height: '26px',
-                          borderRadius: '50%',
-                          background: 'var(--accent)',
-                          color: '#fff',
-                          display: 'grid',
-                          placeItems: 'center',
-                          fontWeight: 800,
-                          boxShadow: '0 8px 18px rgba(0,0,0,0.3)',
-                        }}>
-                          ✓
-                        </div>
-                      ) : null}
-                    />
-                    <div style={{
-                      minHeight: '18px',
-                      padding: '3px 8px',
-                      borderRadius: '999px',
-                      border: '1px solid var(--glass-border)',
-                      background: 'rgba(255,255,255,0.035)',
-                      color: 'var(--text-sub)',
-                      fontSize: '12px',
-                      lineHeight: 1.2,
-                    }}>
-                      {formatBytes(archive.size) || '体积未知'}
-                    </div>
-                  </div>
+                    archive={archive}
+                    selected={selectedArchiveIds.has(id)}
+                    selectionDisabled={selectionDisabledIds.has(id)}
+                    showProgressBar={showGlobalArchiveProgress}
+                    reserveProgressSpace={reserveGlobalProgressSpace}
+                    onToggle={toggleArchiveSelection}
+                    onContextMenu={handleOpenArchiveMenu}
+                  />
                 );
               })}
             </div>
@@ -841,21 +938,33 @@ export default function DeduplicatePage({ onBack }) {
       {!running && groups.length === 0 && !lastScanStats && (
         <EmptyState
           title="等待检测"
-          detail="点击“开始检测”后会读取归档封面，按 LRReader 的缩略图相似度规则查找疑似重复。"
+          detail="点击“开始检测”后会读取档案封面，通过相似度算法查找疑似重复的档案。"
         />
       )}
       {!running && groups.length === 0 && lastScanStats && (
         <EmptyState
           title={lastScanStats.signatureCount < 2 ? '有效封面不足' : '本次检测未发现疑似重复'}
           detail={lastScanStats.missing > 0
-            ? `已排除 ${formatCount(lastScanStats.missing)} 个缺失封面的归档。其余有效封面已完成比较。`
+            ? `已排除 ${formatCount(lastScanStats.missing)} 个缺失封面的档案。其余有效封面已完成比较。`
             : '所有有效封面已完成比较。'}
+        />
+      )}
+      <DedupeArchiveContextMenu
+        menu={archiveMenu}
+        onClose={() => setArchiveMenu(null)}
+        onOpenNewTab={openArchiveInNewTab}
+        onViewThumbnails={openArchiveThumbnails}
+      />
+      {thumbnailArchive && (
+        <ArchiveThumbnailDialog
+          archive={thumbnailArchive}
+          onClose={() => setThumbnailArchive(null)}
         />
       )}
       <ConfirmDialog
         open={deletePending}
-        title="确认批量删除归档"
-        message={`将从 LANraragi 中删除选中的 ${selectedArchives.length} 个归档。此操作不可撤销。`}
+        title="确认批量删除档案"
+        message={`将从 LANraragi 中删除选中的 ${selectedArchives.length} 个档案。此操作不可撤销。`}
         confirmLabel={running ? '删除中...' : '确认删除'}
         cancelLabel="取消"
         onConfirm={deleteSelectedArchives}

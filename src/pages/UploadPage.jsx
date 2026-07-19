@@ -81,7 +81,7 @@ export default function UploadPage() {
     try {
       await lrrApi.clearSearchCache();
     } catch (error) {
-      setNotice(`归档已提交，但搜索缓存清理失败：${error.message || '请稍后在首页刷新'}`);
+      setNotice(`档案已提交，但搜索缓存清理失败：${error.message || '请稍后在首页刷新'}`);
     }
   };
 
@@ -142,7 +142,7 @@ export default function UploadPage() {
       <header className="upload-page-header">
         <div className="upload-page-title">
           <span className="upload-title-icon"><ToolbarGlyph name="upload" size={25} /></span>
-          <div><h1>上传归档</h1><p>从本地文件或互联网添加到 LANraragi</p></div>
+          <div><h1>上传档案</h1><p>从本地文件或互联网添加到 LANraragi</p></div>
         </div>
         <button type="button" className="btn" onClick={goBack} disabled={running}>返回</button>
       </header>
@@ -151,7 +151,7 @@ export default function UploadPage() {
         <section className="glass-panel upload-panel">
           <div className="upload-section-heading">
             <ToolbarGlyph name="upload" size={20} />
-            <div><h2>从本地添加</h2><p>支持一次选择多个归档文件</p></div>
+            <div><h2>从本地添加</h2><p>支持一次选择多个档案文件</p></div>
           </div>
           <input ref={fileInputRef} type="file" multiple accept={ACCEPTED_FILES} hidden onChange={event => { addFiles(event.target.files); event.target.value = ''; }} />
           <div

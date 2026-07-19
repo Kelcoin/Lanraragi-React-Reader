@@ -672,7 +672,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      prompt('复制归档链接:', url);
+      prompt('复制档案链接:', url);
     }
   }, []);
 
@@ -1087,7 +1087,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     setArchiveLoadError('');
     try {
       if (clearSearchCache) {
-        try { await lrrApi.clearSearchCache(); } catch (e) { console.warn('清理搜索缓存失败，继续刷新归档列表', e); }
+        try { await lrrApi.clearSearchCache(); } catch (e) { console.warn('清理搜索缓存失败，继续刷新档案列表', e); }
       }
       if (isUntaggedMode) {
         const ids = await lrrApi.getUntaggedArchives({ signal: controller.signal });
@@ -1166,8 +1166,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       if (e?.name === 'AbortError') return false;
       if (fetchSeq !== archiveFetchSeqRef.current) return false;
       controller.abort();
-      console.error('获取归档列表失败', e);
-      setArchiveLoadError(e?.message || (isUntaggedMode ? '获取无标签归档失败，请重试' : '获取归档列表失败，请重试'));
+      console.error('获取档案列表失败', e);
+      setArchiveLoadError(e?.message || (isUntaggedMode ? '获取无标签档案失败，请重试' : '获取档案列表失败，请重试'));
       return false;
     } finally {
       if (fetchSeq === archiveFetchSeqRef.current) {
@@ -2018,7 +2018,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                   )}
                 </>
               ) : (
-                <div style={{ fontSize: '12px', color: 'var(--text-sub)', padding: '4px 0', whiteSpace: 'nowrap' }}>所有归档均已读完</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-sub)', padding: '4px 0', whiteSpace: 'nowrap' }}>所有档案均已读完</div>
               )}
             </div>
           </div>
@@ -2041,7 +2041,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       {watchlist.length > 0 && (
         <section className="glass-panel section-reveal section-reveal-delay-1" style={{ marginBottom: '32px', padding: 0, display: 'flex', flexDirection: 'column' }}>
           <div className="home-carousel-header">
-            <SectionHeading glyph="watchlist" onClick={handleNavigateWatchlist} title="查看全部待看归档">待看归档</SectionHeading>
+            <SectionHeading glyph="watchlist" onClick={handleNavigateWatchlist} title="查看全部待看档案">待看档案</SectionHeading>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 type="button"
@@ -2049,14 +2049,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                 onClick={handleCheckWatchlist}
                 disabled={watchlistChecking}
                 style={{ padding: '6px 12px', fontSize: '12px', opacity: watchlistChecking ? 0.72 : 1 }}
-                title="检查待看归档是否仍存在于 LANraragi"
+                title="检查待看档案是否仍存在于 LANraragi"
               >
                 {watchlistChecking ? '检查中' : '刷新'}
               </button>
               <CollapseButton
                 collapsed={watchlistCollapsed}
                 onClick={() => setWatchlistCollapsed(v => !v)}
-                title={watchlistCollapsed ? '展开待看归档' : '收起待看归档'}
+                title={watchlistCollapsed ? '展开待看档案' : '收起待看档案'}
               />
             </div>
           </div>
@@ -2085,8 +2085,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                     justifyContent: 'center',
                     cursor: 'pointer',
                   }}
-                  title="查看全部待看归档"
-                  aria-label="查看全部待看归档"
+                  title="查看全部待看档案"
+                  aria-label="查看全部待看档案"
                 >
                   <span className="history-view-all-arrow" aria-hidden="true" style={{ display: 'flex', alignItems: 'center' }}>
                     <svg viewBox="0 0 36 48" width="36" height="48" fill="none" stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round">
@@ -2171,7 +2171,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                 style={{ padding: '6px 12px', fontSize: '12px', opacity: archivesRefreshing ? 0.72 : 1 }}
                 onClick={handleManualRefreshArchives}
                 disabled={loading || archivesRefreshing || archiveDeleting}
-                title="清理 LANraragi 搜索缓存并重新获取归档列表"
+                title="清理 LANraragi 搜索缓存并重新获取档案列表"
               >
                 {archivesRefreshing ? '刷新中' : '刷新'}
               </button>
@@ -2306,14 +2306,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
             <div style={{ display: 'flex', gap: '12px', flex: stackFilterControls ? '1 1 100%' : `0 1 ${FILTER_ACTIONS_MIN_WIDTH}px`, minWidth: stackFilterControls ? '100%' : `${FILTER_ACTIONS_MIN_WIDTH}px`, width: stackFilterControls ? '100%' : 'auto' }}>
               <CustomSelect
                 compact
-                style={{ flex: 1 }}
+                style={{ flex: '1.35 1 0' }}
                 value={filter.sortBy}
                 onChange={(v) => setFilter(prev => ({ ...prev, sortBy: v }))}
                 options={[{ label: '按添加时间', value: 'date_added' }, { label: '按标题', value: 'title' }]}
               />
               <CustomSelect
                 compact
-                style={{ flex: 1 }}
+                style={{ flex: '0.65 1 0' }}
                 value={filter.order}
                 onChange={(v) => setFilter(prev => ({ ...prev, order: v }))}
                 options={[{ label: '倒序', value: 'desc' }, { label: '正序', value: 'asc' }]}
@@ -2387,7 +2387,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
 
         {archives.length === 0 && !loading && (
           <div role={archiveLoadError ? 'alert' : 'status'} aria-live="polite" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-sub)', fontSize: '14px' }}>
-            {archiveLoadError || (selectedCategory?.id === UNTAGGED_CATEGORY_ID ? '没有无标签归档' : (filter.active ? '没有匹配的归档，请尝试其他筛选条件' : '仓库为空，请先在 LANraragi 中添加归档'))}
+            {archiveLoadError || (selectedCategory?.id === UNTAGGED_CATEGORY_ID ? '没有无标签档案' : (filter.active ? '没有匹配的档案，请尝试其他筛选条件' : '仓库为空，请先在 LANraragi 中添加档案'))}
           </div>
         )}
 
@@ -2460,14 +2460,14 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               <CacheSettings />
             </div>
             <div className="settings-subgroup">
-              <div className="settings-subgroup-title">归档显示</div>
+              <div className="settings-subgroup-title">档案显示</div>
           <div className="settings-row">
-            <SettingHint text={'作用：将横版或方形封面裁成统一的竖向比例。\n影响：只改变书库缩略图，不修改归档原图。'}>裁剪封面</SettingHint>
+            <SettingHint text={'作用：将横版或方形封面裁成统一的竖向比例。\n影响：只改变书库缩略图，不修改档案原图。'}>裁剪封面</SettingHint>
             <div className="settings-control settings-toggle-control"><ToggleSwitch checked={cropCover} onChange={handleToggleCropCover} label="裁剪封面" /></div>
           </div>
 
           <label className="settings-row">
-            <SettingHint text={'禁止：所有归档卡片都不显示阅读进度。\n仅历史记录：保持历史与待看组件中的进度提示。\n全局：有阅读进度的归档卡片均会显示。'}>显示进度条</SettingHint>
+            <SettingHint text={'禁止：所有档案卡片都不显示阅读进度。\n仅历史记录：保持历史与待看组件中的进度提示。\n全局：有阅读进度的档案卡片均会显示。'}>显示进度条</SettingHint>
             <div className="settings-control">
               <CustomSelect
                 ariaLabel="显示进度条"
@@ -2487,7 +2487,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               <div className="settings-subgroup-title">浏览与记录</div>
 
           <label className="settings-row">
-            <SettingHint text={'滚动模式：到达列表底部时自动加载更多。\n分页模式：每次显示一页归档，使用页码切换。'}>档案浏览模式</SettingHint>
+            <SettingHint text={'滚动模式：到达列表底部时自动加载更多。\n分页模式：每次显示一页档案，使用页码切换。'}>档案浏览模式</SettingHint>
             <div className="settings-control">
               <CustomSelect
                 value={archiveBrowseMode}
@@ -2508,7 +2508,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </div>
 
           <div className="settings-row">
-            <SettingHint text={'作用：隐藏已读至最后一页的归档。\n影响：只精简阅读历史列表，不会删除阅读记录。'}>历史记录中隐藏已读完</SettingHint>
+            <SettingHint text={'作用：隐藏已读至最后一页的档案。\n影响：只精简阅读历史列表，不会删除阅读记录。'}>历史记录中隐藏已读完</SettingHint>
             <div className="settings-control settings-toggle-control"><ToggleSwitch checked={hideRead} onChange={handleToggleHideRead} label="历史记录中隐藏已读完" /></div>
           </div>
             </div>
@@ -2539,7 +2539,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                   maxHeight: readerSettings.ehEnabled ? '220px' : '0px',
                   opacity: readerSettings.ehEnabled ? 1 : 0,
                   overflow: readerSettings.ehEnabled ? 'visible' : 'hidden',
-                  transform: readerSettings.ehEnabled ? 'translateY(0)' : 'translateY(-6px)',
+                  transform: readerSettings.ehEnabled ? 'none' : 'translateY(-6px)',
                   transition: 'max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, transform 0.28s cubic-bezier(0.4,0,0.2,1)',
                   pointerEvents: readerSettings.ehEnabled ? 'auto' : 'none',
                 }}
@@ -2555,7 +2555,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                     />
                   </label>
                   <label className="settings-row">
-                    <SettingHint text={'作用：限制每个归档加载的评论数量。\n范围：1–200 条。'}>最多展示数量</SettingHint>
+                    <SettingHint text={'作用：限制每个档案加载的评论数量。\n范围：1–200 条。'}>最多展示数量</SettingHint>
                     <input type="text" inputMode="numeric" pattern="[0-9]*" className="input-glass no-spinner"
                       value={String(readerSettings.ehMaxComments)}
                       onChange={(e) => { const v = e.target.value; const n = parseInt(v, 10); if (!isNaN(n) && n >= 1 && n <= 200) updateReaderSettings((s) => ({ ...s, ehMaxComments: n })); }}
@@ -2590,7 +2590,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           </div>
 
           <div className="settings-row">
-            <SettingHint text={ehFavoriteSyncReady ? '作用：删除归档时，同时移除 source 指向的 E-Hentai 收藏。\n控制：仍可在每次删除确认时单独取消同步。' : '当前不可用。\n条件：配置 Worker、访问 Token，并提供含 ipb_member_id 与 ipb_pass_hash 的 E-Hentai Cookie。'}>同步删除 E-Hentai 收藏夹</SettingHint>
+            <SettingHint text={ehFavoriteSyncReady ? '作用：删除档案时，同时移除 source 指向的 E-Hentai 收藏。\n控制：仍可在每次删除确认时单独取消同步。' : '当前不可用。\n条件：配置 Worker、访问 Token，并提供含 ipb_member_id 与 ipb_pass_hash 的 E-Hentai Cookie。'}>同步删除 E-Hentai 收藏夹</SettingHint>
             <ToggleSwitch checked={ehFavoriteDeleteSync && ehFavoriteSyncReady} onChange={handleToggleEhFavoriteDeleteSync} disabled={!ehFavoriteSyncReady} label="同步删除 E-Hentai 收藏夹" />
           </div>
 
@@ -2624,8 +2624,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
           <div className="settings-section">
             <div className="settings-section-title">工具</div>
             <div className="settings-tool-grid">
-              <button type="button" className="btn" onClick={handleNavigateUpload} style={{ width: '100%', padding: '10px', fontSize: '13px' }}>上传归档</button>
-              <button type="button" className="btn" onClick={handleNavigateDeduplicate} style={{ width: '100%', padding: '10px', fontSize: '13px' }}>重复归档检测</button>
+              <button type="button" className="btn" onClick={handleNavigateUpload} style={{ width: '100%', padding: '10px', fontSize: '13px' }}>上传档案</button>
+              <button type="button" className="btn" onClick={handleNavigateDeduplicate} style={{ width: '100%', padding: '10px', fontSize: '13px' }}>重复档案检测</button>
             </div>
             <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '14px' }} />
           </div>
@@ -2677,7 +2677,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     />
     <ConfirmDialog
       open={!!archiveDeleteTarget}
-      title="确认删除归档"
+      title="确认删除档案"
       message={archiveDeleteTarget ? `将从 LANraragi 中删除“${archiveDeleteTarget.title || archiveDeleteTarget.arcid || archiveDeleteTarget.id}”。此操作不可撤销。` : ''}
       confirmLabel={archiveDeleting ? '删除中...' : '确认删除'}
       cancelLabel="取消"
@@ -2691,8 +2691,8 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     </ConfirmDialog>
     <ConfirmDialog
       open={bulkDeletePending}
-      title="确认批量删除归档"
-      message={`将从 LANraragi 中删除选中的 ${selectedArchiveIds.size} 个归档。此操作不可撤销。`}
+      title="确认批量删除档案"
+      message={`将从 LANraragi 中删除选中的 ${selectedArchiveIds.size} 个档案。此操作不可撤销。`}
       confirmLabel={archiveDeleting ? '删除中...' : '确认删除'}
       cancelLabel="取消"
       onConfirm={handleBulkArchiveDelete}
@@ -2727,7 +2727,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     <ConfirmDialog
       open={!!historyDeleteTarget}
       title="确认删除阅读记录"
-      message={historyDeleteTarget ? `将“${historyDeleteTarget.title}”从继续阅读中移除。再次阅读该归档时会重新加入历史记录。` : ''}
+      message={historyDeleteTarget ? `将“${historyDeleteTarget.title}”从继续阅读中移除。再次阅读该档案时会重新加入历史记录。` : ''}
       confirmLabel="确认删除"
       cancelLabel="取消"
       onConfirm={handleRemoveHistory}

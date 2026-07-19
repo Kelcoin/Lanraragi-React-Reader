@@ -85,7 +85,7 @@ export function hasArchiveReadingProgress(archive = {}, localPage = 0) {
 
 export async function clearArchiveReadingProgress(archive, options = {}) {
   const id = archive?.arcid || archive?.id;
-  if (!id) throw new Error('归档 ID 无效');
+  if (!id) throw new Error('档案 ID 无效');
   const { api, removeHistory, saveHistoryEntry } = options;
   if (!api || !removeHistory || !saveHistoryEntry) throw new Error('缺少清除阅读进度所需服务');
   const info = await api.getServerInfo();
