@@ -419,7 +419,8 @@ test('reader overlays do not mutate background geometry and settings use remaini
   assert.match(reader, /className="reader-thumbnail-drawer-backdrop"[\s\S]*touchAction:\s*'none'[\s\S]*onClick=\{closeThumbnailDrawer\}/s);
   assert.match(reader, /showSettingsPanel\s*&&\s*createPortal\(/s);
   assert.match(reader, /const settingsPanelTop = Math\.ceil\(toolbarRef\.current\?\.getBoundingClientRect\(\)\.bottom \|\| 0\)/);
-  assert.match(reader, /data-panel="settings"[\s\S]*position:\s*'fixed'[\s\S]*top:\s*`\$\{settingsPanelTop \+ 8\}px`[\s\S]*bottom:\s*'max\(12px, calc\(var\(--app-safe-area-bottom\) \+ 8px\)\)'/s);
+  assert.match(reader, /data-panel="settings"[\s\S]*position:\s*'fixed'[\s\S]*top:\s*`\$\{settingsPanelTop \+ 8\}px`[\s\S]*maxHeight:\s*`calc\(100dvh - \$\{settingsPanelTop \+ 8\}px - max\(12px, calc\(var\(--app-safe-area-bottom\) \+ 8px\)\)\)`/s);
+  assert.doesNotMatch(reader, /data-panel="settings"[\s\S]{0,500}bottom:\s*'max\(12px, calc\(var\(--app-safe-area-bottom\) \+ 8px\)\)'/s);
 });
 
 test('configuration transfer warning and settings layers stay concise and isolated', () => {

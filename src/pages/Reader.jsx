@@ -3504,7 +3504,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               position: 'fixed',
               top: `${settingsPanelTop + 8}px`,
               right: 'max(20px, calc(var(--app-safe-area-right) + 12px))',
-              bottom: 'max(12px, calc(var(--app-safe-area-bottom) + 8px))',
+              maxHeight: `calc(100dvh - ${settingsPanelTop + 8}px - max(12px, calc(var(--app-safe-area-bottom) + 8px)))`,
               zIndex: 9999,
               padding: '22px',
               borderRadius: '14px',
