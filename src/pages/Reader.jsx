@@ -138,6 +138,7 @@ const DRAWER_COLUMNS = 3;
 const DRAWER_GAP = 12;
 const DRAWER_OVERSCAN_ROWS = 4;
 const DRAWER_TRANSITION_MS = 300;
+const IMMERSIVE_TOUCH_ACTIVATION_GUARD_MS = 500;
 const READER_OVERLAY_SCROLL_SELECTOR = '[data-reader-overlay-scroll], [data-select-dropdown="true"]';
 const PageImage = React.forwardRef(({
   pageUrl,
@@ -1670,6 +1671,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
   const skipNextClickRef = useRef(false);
   const lastTouchTimeRef = useRef(0);
   const immersiveControlsTimerRef = useRef(null);
+  const immersiveTouchGuardUntilRef = useRef(0);
 
   // ===== Pan refs =====
   const panRef = useRef({ x: panX, y: panY, startX: 0, startY: 0, originX: panX, originY: panY });
@@ -1696,6 +1698,18 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
       setImmersiveControlsSide(null);
     }, 2500);
   }, [holdImmersiveControls]);
+
+  const armImmersiveTouchGuard = useCallback(() => {
+    immersiveTouchGuardUntilRef.current = Date.now() + IMMERSIVE_TOUCH_ACTIVATION_GUARD_MS;
+  }, []);
+
+  const consumeImmersiveTouchClick = useCallback((event) => {
+    if (Date.now() >= immersiveTouchGuardUntilRef.current) return;
+    immersiveTouchGuardUntilRef.current = 0;
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent?.stopImmediatePropagation?.();
+  }, []);
 
   const scheduleZoomTransform = useCallback((animated = false) => {
     zoomTransformAnimatedRef.current = animated;
@@ -3780,7 +3794,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               aria-label="显示左侧阅读控制"
               onPointerEnter={() => revealImmersiveControls('left')}
               onMouseDown={(event) => event.stopPropagation()}
-              onTouchStart={(event) => { event.preventDefault(); event.stopPropagation(); revealImmersiveControls('left'); }}
+              onTouchStart={(event) => { event.preventDefault(); event.stopPropagation(); armImmersiveTouchGuard(); revealImmersiveControls('left'); }}
               onClick={(event) => { event.stopPropagation(); revealImmersiveControls('left'); }}
             />
             <button
@@ -3789,7 +3803,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
               aria-label="显示右侧阅读控制"
               onPointerEnter={() => revealImmersiveControls('right')}
               onMouseDown={(event) => event.stopPropagation()}
-              onTouchStart={(event) => { event.preventDefault(); event.stopPropagation(); revealImmersiveControls('right'); }}
+              onTouchStart={(event) => { event.preventDefault(); event.stopPropagation(); armImmersiveTouchGuard(); revealImmersiveControls('right'); }}
               onClick={(event) => { event.stopPropagation(); revealImmersiveControls('right'); }}
             />
             {['left', 'right'].map((side) => (
@@ -3805,6 +3819,7 @@ export default function Reader({ archiveId, onBack, coldRestoreBoot = false }) {
                 onBlur={() => revealImmersiveControls(side)}
                 onMouseDown={(event) => event.stopPropagation()}
                 onTouchStart={(event) => event.stopPropagation()}
+                onClickCapture={consumeImmersiveTouchClick}
                 onClick={(event) => event.stopPropagation()}
               >
                 <button type="button" className="reader-immersive-control-button" tabIndex={immersiveControlsSide === side ? 0 : -1} onClick={() => { setViewMode('normal'); hideImmersiveControls(); }} title="退出沉浸模式" aria-label="退出沉浸模式">

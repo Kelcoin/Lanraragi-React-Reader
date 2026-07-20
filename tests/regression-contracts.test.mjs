@@ -407,8 +407,17 @@ test('fullscreen application panels keep their controls outside system bars', ()
 
 test('immersive touch trigger consumes synthetic follow-up clicks', () => {
   const reader = read('src/pages/Reader.jsx');
-  assert.match(reader, /className="reader-immersive-trigger reader-immersive-trigger-left"[\s\S]*onTouchStart=\{\(event\) => \{[\s\S]*event\.preventDefault\(\)/s);
-  assert.match(reader, /className="reader-immersive-trigger reader-immersive-trigger-right"[\s\S]*onTouchStart=\{\(event\) => \{[\s\S]*event\.preventDefault\(\)/s);
+  assert.match(reader, /const IMMERSIVE_TOUCH_ACTIVATION_GUARD_MS\s*=\s*\d+;/);
+  assert.match(reader, /immersiveTouchGuardUntilRef\.current\s*=\s*Date\.now\(\)\s*\+\s*IMMERSIVE_TOUCH_ACTIVATION_GUARD_MS/);
+  assert.match(reader, /className="reader-immersive-trigger reader-immersive-trigger-left"[\s\S]*onTouchStart=\{\(event\) => \{[\s\S]*armImmersiveTouchGuard\(\)[\s\S]*revealImmersiveControls\('left'\)/s);
+  assert.match(reader, /className="reader-immersive-trigger reader-immersive-trigger-right"[\s\S]*onTouchStart=\{\(event\) => \{[\s\S]*armImmersiveTouchGuard\(\)[\s\S]*revealImmersiveControls\('right'\)/s);
+  assert.match(reader, /className="reader-immersive-controls"[\s\S]*onClickCapture=\{consumeImmersiveTouchClick\}/s);
+});
+
+test('immersive controls have a visible closing animation', () => {
+  const css = read('src/index.css');
+  assert.match(css, /\.reader-immersive-controls\s*\{[^}]*transition:\s*opacity 0\.26s ease, transform 0\.34s[^;]*, visibility 0s linear 0\.34s;/s);
+  assert.match(css, /\.reader-immersive-control-button\s*\{[^}]*opacity 0\.28s ease;/s);
 });
 
 test('reader overlays do not mutate background geometry and settings use remaining viewport', () => {
