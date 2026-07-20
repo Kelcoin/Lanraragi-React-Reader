@@ -379,12 +379,71 @@ test('mobile settings respect safe areas and reveal animations release composito
   assert.match(home, /className="settings-overlay"/);
   assert.match(home, /className="glass-panel settings-panel"/);
   assert.match(css, /\.settings-panel\s*\{[^}]*max-height:\s*100%;/s);
-  assert.match(css, /@media \(max-width:\s*560px\)[\s\S]*\.settings-overlay\s*\{[\s\S]*padding-top:\s*max\(24px,\s*calc\(var\(--lrr-android-safe-top,\s*env\(safe-area-inset-top,\s*0px\)\) \+ 16px\)\);/s);
-  assert.match(css, /\.settings-overlay\s*\{[\s\S]*padding-bottom:\s*max\(24px,\s*calc\(env\(safe-area-inset-bottom,\s*0px\) \+ 16px\)\);/s);
+  assert.match(css, /@media \(max-width:\s*560px\)[\s\S]*\.settings-overlay\s*\{[\s\S]*padding-top:\s*max\(24px,\s*calc\(var\(--app-safe-area-top\) \+ 16px\)\);/s);
+  assert.match(css, /@media \(max-width:\s*560px\)[\s\S]*\.settings-overlay\s*\{[\s\S]*padding-bottom:\s*max\(24px,\s*calc\(var\(--app-safe-area-bottom\) \+ 16px\)\);/s);
   assert.match(css, /\.settings-control\s*\{[^}]*flex:\s*0 0 148px;[^}]*width:\s*148px;/s);
   assert.match(customSelect, /display:\s*'flex'[^}]*gap:\s*'8px'/s);
   assert.match(customSelect, /<span style=\{\{[^}]*flex:\s*1[^}]*minWidth:\s*0[^}]*textOverflow:\s*'ellipsis'/s);
   assert.match(css, /@keyframes sectionReveal\s*\{[\s\S]*to\s*\{[^}]*transform:\s*none;/s);
+});
+
+test('fullscreen application panels keep their controls outside system bars', () => {
+  const reader = read('src/pages/Reader.jsx');
+  const css = read('src/index.css');
+
+  assert.match(reader, /createPortal/);
+  assert.match(reader, /createPortal\([\s\S]*reader-thumbnail-drawer-overlay[\s\S]*document\.body\)/s);
+  assert.match(reader, /className="reader-thumbnail-drawer-overlay"/);
+  assert.match(reader, /className="reader-panel-surface reader-thumbnail-drawer-panel"/);
+  assert.match(reader, /data-side=\{drawerSide\}/);
+  assert.match(css, /--app-safe-area-top:\s*var\(--lrr-android-safe-top,\s*env\(safe-area-inset-top,\s*0px\)\);/);
+  assert.match(css, /\.reader-thumbnail-drawer-panel\s*\{[^}]*padding-top:\s*calc\(24px \+ var\(--app-safe-area-top\)\);[^}]*padding-bottom:\s*calc\(24px \+ var\(--app-safe-area-bottom\)\);/s);
+  assert.match(css, /\.reader-thumbnail-drawer-panel\[data-side="left"\]\s*\{[^}]*padding-left:\s*calc\(24px \+ var\(--app-safe-area-left\)\);/s);
+  assert.match(css, /\.reader-thumbnail-drawer-panel\[data-side="right"\]\s*\{[^}]*padding-right:\s*calc\(24px \+ var\(--app-safe-area-right\)\);/s);
+  assert.match(css, /\.settings-overlay\s*\{[^}]*padding-top:\s*max\(16px,\s*calc\(var\(--app-safe-area-top\) \+ 16px\)\);/s);
+  assert.match(css, /\.confirm-dialog-overlay\s*\{[^}]*padding-top:\s*max\(20px,\s*calc\(var\(--app-safe-area-top\) \+ 20px\)\);/s);
+  assert.match(css, /\.metadata-loading-state\s*\{[^}]*padding-top:\s*max\(24px,\s*calc\(var\(--app-safe-area-top\) \+ 24px\)\);/s);
+});
+
+test('immersive touch trigger consumes synthetic follow-up clicks', () => {
+  const reader = read('src/pages/Reader.jsx');
+  assert.match(reader, /const IMMERSIVE_TOUCH_ACTIVATION_GUARD_MS\s*=\s*\d+;/);
+  assert.match(reader, /immersiveTouchGuardUntilRef\.current\s*=\s*Date\.now\(\)\s*\+\s*IMMERSIVE_TOUCH_ACTIVATION_GUARD_MS/);
+  assert.match(reader, /onTouchStart=\{\(event\) => \{ event\.stopPropagation\(\); armImmersiveTouchGuard\(\); revealImmersiveControls\('left'\); \}\}/);
+  assert.match(reader, /onTouchStart=\{\(event\) => \{ event\.stopPropagation\(\); armImmersiveTouchGuard\(\); revealImmersiveControls\('right'\); \}\}/);
+  assert.match(reader, /className="reader-immersive-trigger reader-immersive-trigger-left"[\s\S]*onTouchStart=\{\(event\) => \{[\s\S]*armImmersiveTouchGuard\(\)[\s\S]*revealImmersiveControls\('left'\)/s);
+  assert.match(reader, /className="reader-immersive-trigger reader-immersive-trigger-right"[\s\S]*onTouchStart=\{\(event\) => \{[\s\S]*armImmersiveTouchGuard\(\)[\s\S]*revealImmersiveControls\('right'\)/s);
+  assert.match(reader, /className="reader-immersive-controls"[\s\S]*onClickCapture=\{consumeImmersiveTouchClick\}/s);
+});
+
+test('hidden immersive controls use inert instead of hiding focused descendants', () => {
+  const reader = read('src/pages/Reader.jsx');
+  assert.match(reader, /className="reader-immersive-controls"[\s\S]*inert=\{immersiveControlsSide === side \? undefined : ''\}/s);
+  assert.doesNotMatch(reader, /aria-hidden=\{immersiveControlsSide === side \? 'false' : 'true'\}/);
+});
+
+test('immersive controls have a visible closing animation', () => {
+  const css = read('src/index.css');
+  assert.match(css, /\.reader-immersive-controls\s*\{[^}]*transition:\s*opacity 0\.26s ease, transform 0\.34s[^;]*, visibility 0s linear 0\.34s;/s);
+  assert.match(css, /\.reader-immersive-control-button\s*\{[^}]*opacity 0\.28s ease;/s);
+});
+
+test('reader overlays do not mutate background geometry and settings use remaining viewport', () => {
+  const reader = read('src/pages/Reader.jsx');
+  const select = read('src/components/CustomSelect.jsx');
+
+  assert.doesNotMatch(reader, /if \(showDrawer\)\s*\{\s*return acquireBodyScrollLock\(\);/s);
+  assert.match(reader, /className="reader-thumbnail-drawer-overlay"[\s\S]*overscrollBehavior:\s*'contain'/s);
+  assert.match(reader, /className="reader-thumbnail-drawer-backdrop"[\s\S]*touchAction:\s*'none'[\s\S]*onClick=\{closeThumbnailDrawer\}/s);
+  assert.match(reader, /showSettingsPanel\s*&&\s*createPortal\(/s);
+  assert.match(reader, /const settingsPanelTop = Math\.ceil\(toolbarRef\.current\?\.getBoundingClientRect\(\)\.bottom \|\| 0\)/);
+  assert.match(reader, /data-panel="settings"[\s\S]*position:\s*'fixed'[\s\S]*top:\s*`\$\{settingsPanelTop \+ 8\}px`[\s\S]*maxHeight:\s*`calc\(100dvh - \$\{settingsPanelTop \+ 8\}px - max\(12px, calc\(var\(--app-safe-area-bottom\) \+ 8px\)\)\)`/s);
+  assert.doesNotMatch(reader, /data-panel="settings"[\s\S]{0,500}bottom:\s*'max\(12px, calc\(var\(--app-safe-area-bottom\) \+ 8px\)\)'/s);
+  assert.match(reader, /READER_OVERLAY_SCROLL_SELECTOR\s*=\s*'\[data-reader-overlay-scroll\], \[data-select-dropdown="true"\]'/);
+  assert.match(reader, /document\.addEventListener\('wheel', containReaderOverlayScroll, \{ capture: true, passive: false \}\)/);
+  assert.match(reader, /document\.addEventListener\('touchmove', containReaderOverlayScroll, \{ capture: true, passive: false \}\)/);
+  assert.ok((reader.match(/data-reader-overlay-scroll/g) || []).length >= 4);
+  assert.match(select, /data-select-dropdown="true"[\s\S]*overscrollBehavior:\s*'contain'[\s\S]*touchAction:\s*'pan-y'/s);
 });
 
 test('configuration transfer warning and settings layers stay concise and isolated', () => {
@@ -541,4 +600,25 @@ test('EH comments are persistent, timeout-safe, and reject stale requests', () =
   assert.doesNotMatch(comments, /const commentsCache = new Map/);
   assert.doesNotMatch(comments, /cacheKey \+ '::api'/);
   assert.doesNotMatch(comments, /autoRetryTimerRef|autoRetryCountRef/);
+});
+
+test('Reader sticky flow owns secondary panels and keeps their requests mounted in immersive mode', () => {
+  const reader = read('src/pages/Reader.jsx');
+  assert.match(reader, /data-reader-normal-flow/);
+  assert.match(reader, /data-reader-normal-flow[\s\S]*data-reader-toolbar[\s\S]*data-reader-secondary-content[\s\S]*Thumbnail Drawer/);
+  assert.doesNotMatch(reader, /viewMode === 'normal' && secondaryContentReady && archive/);
+  assert.match(reader, /data-reader-secondary-content[\s\S]*display:\s*viewMode === 'normal' \? 'block' : 'none'/);
+});
+
+test('normal Reader holds old spread geometry until every target slot is decoded', () => {
+  const reader = read('src/pages/Reader.jsx');
+  assert.match(reader, /getPendingSpreadRenderState/);
+  assert.match(reader, /normalSpreadRenderState\.units\.map/);
+  assert.match(reader, /slotIndex < normalSpreadRenderState\.visibleSlotCount/);
+  assert.match(reader, /handleNormalSpreadUnitReady/);
+});
+
+test('touch surfaces suppress native WebKit tap highlight globally', () => {
+  const css = read('src/index.css');
+  assert.match(css, /\*\s*\{[^}]*-webkit-tap-highlight-color:\s*transparent;/s);
 });
