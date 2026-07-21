@@ -6,7 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ArchiveSearchBox from '../components/ArchiveSearchBox';
 import EhFavoriteDeleteSwitch from '../components/EhFavoriteDeleteSwitch';
 import { HomeSectionGlyph, getSectionGlyphColor } from '../components/AppGlyphs';
-import { getCropCover, getHideRead, getHistory, loadHistoryState, removeHistoryItems, setHideRead } from '../lib/history';
+import { getCropCover, getHideRead, getHistory, loadHistoryState, removeHistoryItems } from '../lib/history';
 import { isArchiveMissingError, runHistoryExistenceCheck } from '../lib/historyMaintenance';
 import { getSyncToken, getWorkerUrl } from '../lib/worker-config';
 import { archiveMatchesSearch } from '../lib/archiveSearch';
@@ -143,14 +143,6 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
         setSelectedIds(new Set());
         setLastSelectedId(null);
       }
-      return next;
-    });
-  }, []);
-
-  const handleToggleHideRead = useCallback(() => {
-    setHideReadState((value) => {
-      const next = !value;
-      setHideRead(next).catch(() => {});
       return next;
     });
   }, []);
@@ -368,37 +360,6 @@ export default function HistoryPage({ onSelectArchive, onBack }) {
 
           <div className="history-section-toolbar">
             <ArchiveSearchBox query={query} setQuery={setQuery} placeholder="在阅读历史中搜索标题或标签" />
-            <div className="history-hide-read-toggle">
-              <span>历史记录中隐藏已读完</span>
-              <button
-                type="button"
-                onClick={handleToggleHideRead}
-                style={{
-                  width: '36px',
-                  height: '20px',
-                  borderRadius: '10px',
-                  background: hideRead ? 'var(--accent)' : 'rgba(255,255,255,0.2)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'background 0.2s ease',
-                  flexShrink: 0,
-                }}
-                aria-pressed={hideRead}
-                title={hideRead ? '历史记录中显示已读完' : '历史记录中隐藏已读完'}
-              >
-                <span style={{
-                  position: 'absolute',
-                  top: '2px',
-                  left: hideRead ? '18px' : '2px',
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  background: '#fff',
-                  transition: 'left 0.2s ease',
-                }} />
-              </button>
-            </div>
           </div>
 
           {searchedHistory.length > 0 ? (

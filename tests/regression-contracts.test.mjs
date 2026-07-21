@@ -365,7 +365,8 @@ test('history page header has ordered narrow-screen layout hooks', () => {
   assert.match(history, /className="history-section-header"/);
   assert.match(history, /className="history-section-actions"/);
   assert.match(history, /className="history-section-toolbar"/);
-  assert.match(history, /className="history-hide-read-toggle"/);
+  assert.doesNotMatch(history, /className="history-hide-read-toggle"/);
+  assert.doesNotMatch(history, /handleToggleHideRead|setHideRead\(/);
   assert.match(history, /className="history-summary-part"/);
   assert.match(history, /className="history-page-actions"/);
   assert.ok(history.indexOf('className="history-page-title"') < history.indexOf('className="history-page-summary"'));
@@ -382,7 +383,7 @@ test('history page header has ordered narrow-screen layout hooks', () => {
   assert.match(css, /\.history-section-actions\s*\{/);
   assert.match(css, /\.history-section-toolbar\s*\{/);
   assert.match(css, /\.history-summary-part\s*\{/);
-  assert.match(css, /\.history-hide-read-toggle\s*\{[\s\S]*margin-left:\s*auto;/s);
+  assert.doesNotMatch(css, /\.history-hide-read-toggle/);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-header\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*align-items:\s*stretch;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-title-row\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*minmax\(0,\s*auto\)\s+minmax\(0,\s*1fr\);[\s\S]*align-items:\s*center;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-summary\s*\{[\s\S]*justify-self:\s*end;[\s\S]*text-align:\s*right;/s);

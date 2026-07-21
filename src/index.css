@@ -2646,18 +2646,6 @@ textarea:focus-visible,
   min-width: 0;
 }
 
-.history-hide-read-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-  gap: 8px;
-  margin-left: auto;
-  color: var(--text-sub);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
 .archive-category-list {
   gap: 6px;
 }
@@ -2753,9 +2741,6 @@ textarea:focus-visible,
     gap: 10px;
   }
 
-  .history-hide-read-toggle {
-    width: 100%;
-  }
 }
 
 @media (max-width: 380px) {
