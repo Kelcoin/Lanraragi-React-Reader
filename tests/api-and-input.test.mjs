@@ -97,6 +97,10 @@ test('reader settings reject unsafe automatic turn intervals', () => {
   assert.equal(readerSettings.normalizeReaderSettings({ autoTurnInterval: 12 }).autoTurnInterval, 12);
   assert.equal(readerSettings.normalizeReaderSettings({}).allowProgressRegression, true);
   assert.equal(readerSettings.normalizeReaderSettings({ allowProgressRegression: false }).allowProgressRegression, false);
+  assert.equal(readerSettings.normalizeReaderSettings({}).maxConcurrentDecodes, 3);
+  assert.equal(readerSettings.normalizeReaderSettings({ maxConcurrentDecodes: 0 }).maxConcurrentDecodes, 1);
+  assert.equal(readerSettings.normalizeReaderSettings({ maxConcurrentDecodes: 7 }).maxConcurrentDecodes, 6);
+  assert.equal(readerSettings.normalizeReaderSettings({ maxConcurrentDecodes: 4.9 }).maxConcurrentDecodes, 4);
 });
 
 test('reader settings keep E-Hentai sorting valid across Home and Reader', () => {

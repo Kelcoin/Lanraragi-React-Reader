@@ -84,7 +84,7 @@ test('image decode queue can start one adjacent decode beside active critical wo
 });
 
 test('image decode queue cancels stale queued and active work', async () => {
-  const queue = imageLoadQueue.createImageDecodeQueue();
+  const queue = imageLoadQueue.createImageDecodeQueue({ maxConcurrent: 1 });
   let activeSignal;
   let staleStarted = false;
   const active = queue.schedule('active', async (signal) => {
@@ -98,6 +98,35 @@ test('image decode queue cancels stale queued and active work', async () => {
   await Promise.allSettled([active.promise, stale.promise]);
   assert.equal(activeSignal.aborted, true);
   assert.equal(staleStarted, false);
+});
+
+test('image decode queue supports one slot and applies runtime limit changes', async () => {
+  const queue = imageLoadQueue.createImageDecodeQueue({ maxConcurrent: 1 });
+  assert.equal(typeof queue.setMaxConcurrent, 'function');
+  const events = [];
+  let releaseFirst;
+  const first = queue.schedule('first', async () => {
+    events.push('first');
+    await new Promise((resolve) => { releaseFirst = resolve; });
+  });
+  const second = queue.schedule('second', async () => { events.push('second'); });
+  const third = queue.schedule('third', async () => { events.push('third'); });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, ['first']);
+    queue.setMaxConcurrent(6);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, ['first', 'second', 'third']);
+  } finally {
+    releaseFirst?.();
+    await Promise.allSettled([first.promise, second.promise, third.promise]);
+  }
+});
+
+test('paged Reader covers stale bitmaps while the target spread decodes', () => {
+  const reader = read('src/pages/Reader.jsx');
+  assert.match(reader, /targetPending\s*&&\s*!webtoonActive[\s\S]{0,1200}正在切换到第/);
+  assert.match(reader, /background:\s*'#000'/);
 });
 
 test('memory image cache policy uses byte budget and oldest-first eviction', () => {
@@ -243,7 +272,7 @@ test('paged readers retain the visible frame until the replacement spread is dec
   assert.match(reader, /getPendingSpreadRenderState\(currentSpread, displayedSpread, targetPending\)/);
   assert.match(reader, /key=\{`spread-slot:\$\{slotIndex\}`\}/);
   assert.match(reader, /const decoded = await decodeImageSource\(resolved\.src/);
-  assert.match(reader, /loadSpread\(\[imgCurrRef, imgCurrSecondRef\], activeSpread, IMAGE_LOAD_PRIORITY\.CRITICAL, true, true\)/);
+  assert.match(reader, /loadSpread\(\[imgCurrRef, imgCurrSecondRef\], activeSpread, IMAGE_LOAD_PRIORITY\.CRITICAL, true\)/);
   assert.match(reader, /const commits = await Promise\.all/);
   assert.match(reader, /commits\.forEach\(\(commit\) =>[\s\S]{0,80}commit\(\)/);
 });

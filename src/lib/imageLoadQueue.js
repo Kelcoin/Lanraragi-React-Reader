@@ -75,9 +75,8 @@ function abortError() {
   return new DOMException('Image decode cancelled', 'AbortError');
 }
 
-export function createImageDecodeQueue({ maxConcurrent = 2 } = {}) {
-  const limit = Math.max(2, Number(maxConcurrent) || 2);
-  const backgroundLimit = Math.max(1, limit - 1);
+export function createImageDecodeQueue({ maxConcurrent = 3 } = {}) {
+  let limit = Math.max(1, Math.floor(Number(maxConcurrent) || 3));
   const queued = [];
   const active = new Set();
   let sequence = 0;
@@ -90,6 +89,7 @@ export function createImageDecodeQueue({ maxConcurrent = 2 } = {}) {
       const criticalWaiting = queued.some(isCritical);
       const candidateIndex = criticalWaiting ? queued.findIndex(isCritical) : 0;
       const job = queued[candidateIndex];
+      const backgroundLimit = Math.max(1, limit - 1);
       const backgroundActive = [...active].filter((activeJob) => !isCritical(activeJob)).length;
       if (!isCritical(job) && backgroundActive >= backgroundLimit) return;
       queued.splice(candidateIndex, 1);
@@ -145,5 +145,10 @@ export function createImageDecodeQueue({ maxConcurrent = 2 } = {}) {
     [...queued].forEach((job) => job.cancel());
   }
 
-  return { schedule, cancelAll };
+  function setMaxConcurrent(value) {
+    limit = Math.max(1, Math.floor(Number(value) || 1));
+    pump();
+  }
+
+  return { schedule, cancelAll, setMaxConcurrent };
 }
