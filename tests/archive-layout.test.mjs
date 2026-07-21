@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import * as pagination from '../src/lib/archivePagination.js';
 import * as readerUiState from '../src/lib/readerUiState.js';
 import * as horizontalScroller from '../src/lib/horizontalScroller.js';
 
 const container = { left: 0, width: 640 };
+const read = (path) => readFileSync(path, 'utf8');
 
 test('centers every incomplete visual row and leaves full rows unchanged', () => {
   assert.equal(typeof pagination.getArchiveRowCentering, 'function');
@@ -55,4 +57,10 @@ test('archive text selects Japanese font only when Japanese script is present', 
   assert.equal(readerUiState.getContentLanguage('绫波姬 Valkürie'), 'zh-CN');
   assert.equal(readerUiState.getContentLanguage('母と堕ちていく'), 'ja');
   assert.equal(readerUiState.getContentLanguage('アーカイブ'), 'ja');
+});
+
+test('archive count stays beside the heading on narrow screens', () => {
+  const css = read('src/index.css');
+  const narrowSummaryRule = /@media[^}]*[\s\S]*?\.archive-toolbar-summary\s*\{[^}]*flex-direction:\s*column;/;
+  assert.doesNotMatch(css, narrowSummaryRule);
 });
