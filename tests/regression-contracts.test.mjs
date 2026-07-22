@@ -374,6 +374,7 @@ test('history page header has ordered narrow-screen layout hooks', () => {
   assert.ok(history.indexOf('className="history-section-toolbar"') < history.indexOf('<ArchiveSearchBox'));
   assert.match(watchlist, /className="history-page watchlist-page"/);
   assert.match(watchlist, /className="history-page-title-row"/);
+  assert.match(watchlist, /className="history-page-actions"/);
   assert.match(watchlist, /className="history-section-header"/);
   assert.match(watchlist, /className="history-section-actions"/);
   assert.match(css, /\.history-page-header\s*\{/);
@@ -384,14 +385,14 @@ test('history page header has ordered narrow-screen layout hooks', () => {
   assert.match(css, /\.history-section-toolbar\s*\{/);
   assert.match(css, /\.history-summary-part\s*\{/);
   assert.doesNotMatch(css, /\.history-hide-read-toggle/);
-  assert.match(css, /\.history-page-summary\s*\{[\s\S]*background:\s*var\(--surface-2\);[\s\S]*border:\s*1px solid var\(--glass-border\);[\s\S]*border-radius:\s*999px;/s);
+  assert.match(css, /\.history-page-summary\s*\{[\s\S]*font-family:\s*'Noto Sans SC Variable', system-ui, sans-serif;[\s\S]*font-size:\s*12px;[\s\S]*font-synthesis:\s*none;[\s\S]*font-variant-numeric:\s*tabular-nums;[\s\S]*font-weight:\s*520;[\s\S]*line-height:\s*1\.35;[\s\S]*background:\s*var\(--surface-2\);[\s\S]*border:\s*1px solid var\(--glass-border\);[\s\S]*border-radius:\s*999px;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-header\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*align-items:\s*stretch;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-title-row\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*minmax\(0,\s*auto\)\s+minmax\(0,\s*1fr\);[\s\S]*align-items:\s*center;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-summary\s*\{[\s\S]*justify-self:\s*end;[\s\S]*text-align:\s*right;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-summary-part\s*\{[\s\S]*display:\s*block;/s);
-  assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-actions\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(132px,\s*1fr\)\);/s);
+  assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-actions\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*nowrap;[\s\S]*justify-content:\s*center;/s);
   assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-section-header\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s);
-  assert.match(css, /@media \(max-width:\s*380px\)[\s\S]*\.history-page-actions\s*\{[\s\S]*grid-template-columns:\s*1fr;/s);
+  assert.match(css, /@media \(max-width:\s*600px\)[\s\S]*\.history-page-actions \.btn\s*\{[\s\S]*width:\s*auto;[\s\S]*flex:\s*0 1 auto;[\s\S]*font-size:\s*13px;/s);
 });
 
 test('home archive toolbar count is styled and empty cold restore fetches archives', () => {
@@ -399,11 +400,13 @@ test('home archive toolbar count is styled and empty cold restore fetches archiv
   const css = read('src/index.css');
 
   assert.match(home, /className="archive-count-badge"/);
+  assert.match(home, /className="archive-toolbar-actions"/);
   assert.match(home, /className="archive-toolbar-summary"[\s\S]*alignItems:\s*'center'/);
   assert.match(home, /const hasHydratedArchives = homeSnapshot && Array\.isArray\(homeSnapshot\.archives\) && homeSnapshot\.archives\.length > 0;/);
   assert.match(home, /if \(coldRestoreRef\.current && hasHydratedArchives\) return;/);
   assert.match(home, /if \(navigationRestoreRef\.current && hasHydratedArchives\)/);
-  assert.match(css, /\.archive-count-badge\s*\{[\s\S]*background:\s*var\(--surface-2\);[\s\S]*border:\s*1px solid var\(--glass-border\);[\s\S]*border-radius:\s*999px;/s);
+  assert.match(css, /\.archive-count-badge\s*\{[\s\S]*font-family:\s*'Noto Sans SC Variable', system-ui, sans-serif;[\s\S]*font-size:\s*12px;[\s\S]*font-synthesis:\s*none;[\s\S]*font-variant-numeric:\s*tabular-nums;[\s\S]*font-weight:\s*520;[\s\S]*line-height:\s*1\.35;[\s\S]*background:\s*var\(--surface-2\);[\s\S]*border:\s*1px solid var\(--glass-border\);[\s\S]*border-radius:\s*999px;/s);
+  assert.match(css, /\.archive-toolbar-summary h2,[\s\S]*\.archive-toolbar-summary h2 > span\s*\{[\s\S]*white-space:\s*nowrap;/s);
 });
 
 test('archive title uses one cross-platform two-line geometry contract', () => {

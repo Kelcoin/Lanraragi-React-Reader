@@ -2157,7 +2157,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
                 {archiveCountLabel}
               </span>
             </div>
-            <div style={{ display: 'flex', gap: isNarrow ? '4px' : '8px', flexShrink: 0, alignItems: 'center', justifyContent: 'flex-end' }}>
+            <div className="archive-toolbar-actions" style={{ display: 'flex', gap: isNarrow ? '4px' : '8px', flexShrink: 0, alignItems: 'center', justifyContent: 'flex-end' }}>
               <button
                 className="btn"
                 style={{ padding: '6px 12px', fontSize: '12px' }}

@@ -737,6 +737,19 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+.archive-toolbar-summary h2,
+.archive-toolbar-summary h2 > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.archive-toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .eh-comments {
   container-name: eh-comments;
   container-type: inline-size;
@@ -2581,9 +2594,13 @@ textarea:focus-visible,
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-sub);
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 3px 10px;
+  font-family: 'Noto Sans SC Variable', system-ui, sans-serif;
+  font-size: 12px;
+  font-synthesis: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 520;
+  line-height: 1.35;
+  padding: 4px 10px;
   white-space: nowrap;
 }
 
@@ -2667,8 +2684,12 @@ textarea:focus-visible,
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-sub);
+  font-family: 'Noto Sans SC Variable', system-ui, sans-serif;
   font-size: 12px;
-  line-height: 1.25;
+  font-synthesis: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 520;
+  line-height: 1.35;
   padding: 4px 10px;
   white-space: nowrap;
 }
@@ -2709,7 +2730,6 @@ textarea:focus-visible,
   }
 
   .history-page-summary {
-    font-size: 15px;
     justify-self: end;
     text-align: right;
     white-space: normal;
@@ -2724,16 +2744,37 @@ textarea:focus-visible,
   }
 
   .history-page-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
     gap: 10px;
   }
 
   .history-page-actions .btn {
-    width: 100%;
+    width: auto;
+    flex: 0 1 auto;
     min-height: 44px;
-    padding-inline: 10px;
-    font-size: 14px;
+    min-width: 0;
+    padding-inline: 14px;
+    font-size: 13px;
+  }
+
+  .archive-toolbar-primary {
+    gap: 8px !important;
+  }
+
+  .archive-toolbar-summary {
+    gap: 6px !important;
+  }
+
+  .archive-count-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  .archive-toolbar-actions .btn {
+    padding-inline: 8px !important;
+    font-size: 11.5px !important;
   }
 
   .history-section-header {
@@ -2756,12 +2797,6 @@ textarea:focus-visible,
     gap: 10px;
   }
 
-}
-
-@media (max-width: 380px) {
-  .history-page-actions {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (hover: none) {
