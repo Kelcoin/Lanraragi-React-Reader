@@ -1268,8 +1268,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
 
   // Fetch archives when filter changes
   useEffect(() => {
-    if (coldRestoreRef.current) return;
-    if (navigationRestoreRef.current) {
+    const hasHydratedArchives = homeSnapshot && Array.isArray(homeSnapshot.archives) && homeSnapshot.archives.length > 0;
+    if (coldRestoreRef.current && hasHydratedArchives) return;
+    if (navigationRestoreRef.current && hasHydratedArchives) {
       didFetchArchivesRef.current = true;
       lastFetchedRef.current = Date.now();
       return;
@@ -2150,9 +2151,9 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
       <section ref={archivesSectionRef} className="glass-panel section-reveal section-reveal-delay-3" style={{ padding: isNarrow ? '20px 14px' : '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
           <div className="archive-toolbar-primary" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-            <div className="archive-toolbar-summary" style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', minWidth: 0 }}>
+            <div className="archive-toolbar-summary" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
               <SectionHeading glyph="archives" style={{ lineHeight: 1 }}>全部档案</SectionHeading>
-              <span style={{ color: 'var(--text-sub)', fontSize: '12px', lineHeight: 1, paddingBottom: '1px' }}>
+              <span className="archive-count-badge">
                 {archiveCountLabel}
               </span>
             </div>

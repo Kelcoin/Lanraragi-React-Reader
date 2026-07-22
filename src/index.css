@@ -2577,9 +2577,13 @@ textarea:focus-visible,
 }
 
 .history-page-summary {
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--surface-2);
   color: var(--text-sub);
   font-size: 14px;
   line-height: 1.5;
+  padding: 3px 10px;
   white-space: nowrap;
 }
 
@@ -2658,6 +2662,17 @@ textarea:focus-visible,
   touch-action: manipulation;
 }
 
+.archive-count-badge {
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .archive-category-list {
     column-gap: 4px;
@@ -2710,7 +2725,7 @@ textarea:focus-visible,
 
   .history-page-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
     gap: 10px;
   }
 
