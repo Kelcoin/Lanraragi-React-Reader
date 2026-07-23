@@ -10,6 +10,7 @@ import { encodeApiKey } from '../lib/api';
 import { scopedCacheKey } from '../lib/configScope';
 import { isOutsideHorizontalViewport } from '../lib/horizontalScroller';
 import { getContentLanguage } from '../lib/readerUiState';
+import { ARCHIVE_CARD_WIDTH, WIDE_ARCHIVE_CARD_WIDTH } from '../lib/archiveGridLayout';
 
 const NAMESPACE_COLORS = NAMESPACE_COLORS_MAP;
 const archiveAspectRatioCache = new Map();
@@ -92,7 +93,7 @@ async function readImageAspectRatio(src) {
   }
 }
 
-export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveContextMenu, longPressTitle = '', currentPage, progress, showProgressBar, reserveProgressSpace = false, noCrop, cacheOnly = false, wrapStyle, className, overlay, selectionMode = false, selected = false, onSelectToggle, disabled = false }) {
+export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveContextMenu, longPressTitle = '', currentPage, progress, showProgressBar, reserveProgressSpace = false, noCrop, cacheOnly = false, wrapStyle, className, overlay, selectionMode = false, selected = false, onSelectToggle, disabled = false, archiveGridItemKey, archiveGridChildrenVersion, archiveGridLayoutVersion, onArchiveGridWidthChange }) {
   const id = archive.arcid || archive.id;
   const [hovered, setHovered] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -182,6 +183,14 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
 
   const isWide = noCrop && aspectRatio != null && aspectRatio > 1.0;
   const baseMetaFontSize = isMobile ? 10.5 : 11;
+
+  useLayoutEffect(() => {
+    if (!archiveGridItemKey || !onArchiveGridWidthChange) return;
+    onArchiveGridWidthChange(
+      archiveGridItemKey,
+      isWide ? WIDE_ARCHIVE_CARD_WIDTH : ARCHIVE_CARD_WIDTH,
+    );
+  }, [archiveGridItemKey, isWide, onArchiveGridWidthChange]);
 
   const rememberAspectRatio = useCallback((next) => {
     if (!Number.isFinite(next) || next <= 0) return;
@@ -372,7 +381,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   useLayoutEffect(() => {
     if (!isPanelVisible || categorizedTags.length === 0) return;
     updatePanelPosition();
-  }, [categorizedTags.length, isPanelVisible, updatePanelPosition]);
+  }, [archiveGridChildrenVersion, archiveGridLayoutVersion, categorizedTags.length, isPanelVisible, updatePanelPosition]);
 
   useEffect(() => {
     if (!isPanelVisible) return;
