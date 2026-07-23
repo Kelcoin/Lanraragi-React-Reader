@@ -1,6 +1,13 @@
 export const ARCHIVE_CARD_WIDTH = 150;
 export const WIDE_ARCHIVE_CARD_WIDTH = 316;
 
+export function getArchiveCardMove(previousRect, nextRect, animationOffset = null) {
+  if (!previousRect || !nextRect) return null;
+  const x = previousRect.left - nextRect.left + (animationOffset?.x || 0);
+  const y = previousRect.top - nextRect.top + (animationOffset?.y || 0);
+  return Math.abs(x) < 0.5 && Math.abs(y) < 0.5 ? null : { x, y };
+}
+
 function createFirstFitIndex(capacity) {
   let leafCount = 1;
   while (leafCount < capacity) leafCount *= 2;

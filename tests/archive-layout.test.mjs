@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import * as readerUiState from '../src/lib/readerUiState.js';
 import * as horizontalScroller from '../src/lib/horizontalScroller.js';
-import { packArchiveGridItems } from '../src/lib/archiveGridLayout.js';
+import { getArchiveCardMove, packArchiveGridItems } from '../src/lib/archiveGridLayout.js';
 
 const read = (path) => readFileSync(path, 'utf8');
 
@@ -78,6 +78,40 @@ test('large one-card rows pack without quadratic scans', () => {
   const elapsed = performance.now() - startedAt;
   assert.equal(packed.length, items.length);
   assert.ok(elapsed < 100, `packing took ${elapsed.toFixed(1)}ms`);
+});
+
+test('archive reflow delta ignores stationary cards and tracks position changes', () => {
+  assert.equal(
+    getArchiveCardMove({ left: 10, top: 20 }, { left: 10.4, top: 20.4 }),
+    null,
+  );
+  assert.deepEqual(
+    getArchiveCardMove({ left: 332, top: 100 }, { left: 166, top: 420 }),
+    { x: 166, y: -320 },
+  );
+});
+
+test('archive reflow preserves an in-flight visual offset during another layout change', () => {
+  assert.deepEqual(
+    getArchiveCardMove(
+      { left: 100, top: 20 },
+      { left: 300, top: 20 },
+      { x: -50, y: 0 },
+    ),
+    { x: -250, y: 0 },
+  );
+});
+
+test('archive grid animates keyed reflow with reduced-motion protection', () => {
+  const grid = read('src/components/ArchiveGrid.jsx');
+  const card = read('src/components/ArchiveCard.jsx');
+  assert.match(card, /data-archive-grid-key=\{archiveGridItemKey \|\| undefined\}/);
+  assert.match(grid, /prefers-reduced-motion: reduce/);
+  assert.match(grid, /element\.animate\(/);
+  assert.match(grid, /element\.offsetLeft/);
+  assert.match(grid, /element\.offsetTop/);
+  assert.match(grid, /duration:\s*220/);
+  assert.match(grid, /cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
 });
 
 test('drawer virtualization uses content width and includes the row gap', () => {

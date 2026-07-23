@@ -10,11 +10,13 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { ARCHIVE_CARD_WIDTH, packArchiveGridItems } from '../lib/archiveGridLayout';
+import { ARCHIVE_CARD_WIDTH, getArchiveCardMove, packArchiveGridItems } from '../lib/archiveGridLayout';
 
 const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, ...props }, forwardedRef) {
   const gridRef = useRef(null);
   const widthsRef = useRef(new Map());
+  const previousRectsRef = useRef(new Map());
+  const animationsRef = useRef(new Map());
   const [layout, setLayout] = useState({ width: 0, gap: 0, revision: 0 });
 
   const setGridRef = useCallback((node) => {
@@ -76,6 +78,57 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
         : element
     ));
   }, [children, layout.gap, layout.revision, layout.width, reportItemWidth]);
+
+  useLayoutEffect(() => {
+    const node = gridRef.current;
+    if (!node) return;
+
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const nextRects = new Map();
+
+    for (const element of node.children) {
+      const key = element.dataset.archiveGridKey;
+      if (!key) continue;
+
+      const activeAnimation = animationsRef.current.get(key);
+      const animatedRect = activeAnimation ? element.getBoundingClientRect() : null;
+      activeAnimation?.cancel();
+      const settledRect = activeAnimation ? element.getBoundingClientRect() : null;
+      const animationOffset = activeAnimation ? {
+        x: animatedRect.left - settledRect.left,
+        y: animatedRect.top - settledRect.top,
+      } : null;
+      const nextRect = { left: element.offsetLeft, top: element.offsetTop };
+      const move = getArchiveCardMove(previousRectsRef.current.get(key), nextRect, animationOffset);
+      nextRects.set(key, nextRect);
+
+      if (!move || reduceMotion || typeof element.animate !== 'function') continue;
+      const animation = element.animate(
+        [
+          { translate: `${move.x}px ${move.y}px` },
+          { translate: '0px 0px' },
+        ],
+        {
+          duration: 220,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        },
+      );
+      animationsRef.current.set(key, animation);
+      const clear = () => {
+        if (animationsRef.current.get(key) === animation) animationsRef.current.delete(key);
+      };
+      animation.onfinish = clear;
+      animation.oncancel = clear;
+    }
+
+    previousRectsRef.current = nextRects;
+  }, [packedChildren]);
+
+  useEffect(() => () => {
+    for (const animation of animationsRef.current.values()) animation.cancel();
+    animationsRef.current.clear();
+    previousRectsRef.current.clear();
+  }, []);
 
   return (
     <div ref={setGridRef} className={['archive-grid', className].filter(Boolean).join(' ')} {...props}>

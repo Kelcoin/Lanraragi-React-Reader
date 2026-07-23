@@ -515,6 +515,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   return (
     <div
       ref={cardRef}
+      data-archive-grid-key={archiveGridItemKey || undefined}
       className={['archive-card-wrap', isWide ? 'is-wide' : '', className].filter(Boolean).join(' ')}
       style={{
         position: 'relative',
