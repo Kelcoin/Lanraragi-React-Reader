@@ -2556,6 +2556,11 @@ textarea:focus-visible,
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
+.archive-grid > .archive-card-wrap {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 330px;
+}
+
 .history-page {
   max-width: 1680px;
   margin: 0 auto;

@@ -340,6 +340,7 @@ function writeReaderSettings(settings) {
 }
 
 export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', onThemeModeChange }) {
+  const supportsAutomaticArchiveLoading = typeof IntersectionObserver !== 'undefined';
   const [navSnapshot] = useState(() => consumeHomeNavigationSnapshot());
   const [coldRestoreBoot] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1183,6 +1184,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
   useEffect(() => { archivesLenRef.current = archives.length; }, [archives.length]);
 
   useEffect(() => {
+    if (!supportsAutomaticArchiveLoading) return undefined;
     const sentinel = sentinelRef.current;
     if (archiveBrowseMode !== ARCHIVE_BROWSE_MODES.scroll) return undefined;
     if (!sentinel) return;
@@ -1196,7 +1198,7 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [archiveBrowseMode, archives.length, doFetch, filter.query, filter.sortBy, filter.order, filter.active]);
+  }, [archiveBrowseMode, archives.length, doFetch, filter.query, filter.sortBy, filter.order, filter.active, supportsAutomaticArchiveLoading]);
 
   // Watch for new filter arrivals from tag clicks (poll localStorage briefly)
   useEffect(() => {
@@ -2377,9 +2379,15 @@ export default function Home({ onSelectArchive, onLogout, themeMode = 'auto', on
               <button className="btn" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={() => goArchivePage(archivePage + 1)} disabled={!canGoNextArchivePage}>下一页</button>
             </div>
           ) : hasMore ? (
-            <button className="btn" style={{ padding: '10px 40px' }} onClick={() => doFetch(false)} disabled={loading || archivesRefreshing}>
-              {loading ? '加载中...' : '加载更多'}
-            </button>
+            supportsAutomaticArchiveLoading ? (
+              loading || archivesRefreshing ? (
+                <div style={{ color: 'var(--text-sub)' }}>加载中...</div>
+              ) : null
+            ) : (
+              <button className="btn" style={{ padding: '10px 40px' }} onClick={() => doFetch(false)} disabled={loading || archivesRefreshing}>
+                {loading ? '加载中...' : '加载更多'}
+              </button>
+            )
           ) : (archives.length > 0 && (
             <div style={{ color: 'var(--text-sub)' }}>— 已经到底啦 —</div>
           ))}

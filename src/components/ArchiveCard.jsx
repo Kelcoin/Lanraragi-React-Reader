@@ -19,6 +19,32 @@ const ARCHIVE_TITLE_FONT_SIZE = 13;
 const ARCHIVE_TITLE_LINE_HEIGHT = 1.5;
 const ARCHIVE_TITLE_GLYPH_SAFETY_PX = 3;
 const ARCHIVE_TITLE_VERTICAL_BUDGET = 51.7;
+const nearViewportCallbacks = new Map();
+let nearViewportObserver = null;
+
+function observeNearViewport(node, onEnter) {
+  if (typeof IntersectionObserver === 'undefined') {
+    onEnter();
+    return () => {};
+  }
+  if (!nearViewportObserver) {
+    nearViewportObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const callback = nearViewportCallbacks.get(entry.target);
+        nearViewportCallbacks.delete(entry.target);
+        nearViewportObserver.unobserve(entry.target);
+        callback?.();
+      }
+    }, { rootMargin: '1200px 800px' });
+  }
+  nearViewportCallbacks.set(node, onEnter);
+  nearViewportObserver.observe(node);
+  return () => {
+    nearViewportCallbacks.delete(node);
+    nearViewportObserver?.unobserve(node);
+  };
+}
 
 function calculatePanelPosition(cardRect, panelHeight, pointerY = null) {
   const panelWidth = 320;
@@ -72,27 +98,6 @@ function calculatePanelPosition(cardRect, panelHeight, pointerY = null) {
   };
 }
 
-async function readImageAspectRatio(src) {
-  if (!src) return null;
-  const img = new Image();
-  img.decoding = 'async';
-  img.src = src;
-  try {
-    if (!img.complete) {
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-      });
-    }
-    if (typeof img.decode === 'function') {
-      try { await img.decode(); } catch {}
-    }
-    return img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveContextMenu, longPressTitle = '', currentPage, progress, showProgressBar, reserveProgressSpace = false, noCrop, cacheOnly = false, wrapStyle, className, overlay, selectionMode = false, selected = false, onSelectToggle, disabled = false, archiveGridItemKey, archiveGridChildrenVersion, archiveGridLayoutVersion, onArchiveGridWidthChange }) {
   const id = archive.arcid || archive.id;
   const [hovered, setHovered] = useState(false);
@@ -110,6 +115,9 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const aspectCacheKey = scopedCacheKey(`aspect:${id}`);
   const [aspectRatio, setAspectRatio] = useState(() => archiveAspectRatioCache.get(aspectCacheKey) ?? null);
   const cardRef = useRef(null);
+  const [thumbnailEligible, setThumbnailEligible] = useState(() => (
+    typeof IntersectionObserver === 'undefined'
+  ));
   const panelRef = useRef(null);
   const imgRef = useRef(null);
   const leaveTimerRef = useRef(null);
@@ -120,6 +128,11 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
   const longPressTriggeredRef = useRef(false);
   const pointerStartRef = useRef(null);
   const hoverPointerYRef = useRef(null);
+
+  useEffect(() => {
+    if (thumbnailEligible || !cardRef.current) return undefined;
+    return observeNearViewport(cardRef.current, () => setThumbnailEligible(true));
+  }, [thumbnailEligible]);
 
   useEffect(() => {
     if (!cacheOnly) {
@@ -221,8 +234,9 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
     updateAspectRatio(imgRef.current);
   }, [thumbSrc, thumbState, updateAspectRatio]);
 
-  // Load immediately so initial paint never depends on a later scroll/click signal.
+  // Start near the viewport so initial covers are ready without flooding the queue.
   useEffect(() => {
+    if (!thumbnailEligible) return undefined;
     let isMounted = true;
 
     const loadThumbnail = async () => {
@@ -245,9 +259,6 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
             });
         if (!isMounted) return;
         if (src) {
-          const ratio = noCrop ? await readImageAspectRatio(src) : null;
-          if (!isMounted) return;
-          if (ratio) rememberAspectRatio(ratio);
           thumbObjectUrlRef.current = src;
           setThumbSrc(src);
           setThumbState('ready');
@@ -273,7 +284,7 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
     return () => {
       isMounted = false;
     };
-  }, [allowNetworkFallback, cacheOnly, id, noCrop, rememberAspectRatio, retryKey]);
+  }, [allowNetworkFallback, cacheOnly, id, retryKey, thumbnailEligible]);
 
   const translateDisplayTag = useCallback((rawTag) => {
     if (!rawTag) return rawTag;
@@ -637,6 +648,8 @@ export default function ArchiveCard({ archive, onClick, onLongPress, onArchiveCo
               className="archive-cover-image"
               src={thumbSrc}
               alt="cover"
+              loading="lazy"
+              decoding="async"
               draggable={false}
               onLoad={handleImageLoad}
               onContextMenu={(e) => e.preventDefault()}

@@ -715,3 +715,11 @@ test('touch surfaces suppress native WebKit tap highlight globally', () => {
   const css = read('src/index.css');
   assert.match(css, /\*\s*\{[^}]*-webkit-tap-highlight-color:\s*transparent;/s);
 });
+
+test('home uses automatic archive loading or the manual fallback, never both', () => {
+  const home = read('src/pages/Home.jsx');
+  assert.match(home, /const supportsAutomaticArchiveLoading = typeof IntersectionObserver !== 'undefined';/);
+  assert.match(home, /if \(!supportsAutomaticArchiveLoading\) return undefined;/);
+  assert.match(home, /supportsAutomaticArchiveLoading\s*\?\s*\(/);
+  assert.match(home, /:\s*\(\s*<button[^>]*onClick=\{\(\) => doFetch\(false\)\}/s);
+});

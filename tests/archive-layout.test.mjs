@@ -121,12 +121,21 @@ test('archive grid animates keyed reflow with reduced-motion protection', () => 
   assert.match(grid, /element\.animate\(/);
   assert.match(grid, /element\.offsetLeft/);
   assert.match(grid, /element\.offsetTop/);
-  assert.match(
-    grid,
-    /const logicalMove = getArchiveCardMove[\s\S]*if \(!logicalMove\) continue;[\s\S]*const activeAnimation/,
-  );
-  assert.match(grid, /duration:\s*220/);
+  assert.match(grid, /duration:\s*150/);
   assert.match(grid, /cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
+});
+
+test('archive grid expands wide cards while reflow animations run in parallel', () => {
+  const grid = read('src/components/ArchiveGrid.jsx');
+  assert.match(grid, /width:\s*element\.offsetWidth/);
+  assert.match(grid, /previousRect\.width \/ nextRect\.width/);
+  assert.match(grid, /const hasWidthChange =/);
+  assert.match(grid, /if \(!logicalMove && !hasWidthChange\) continue;/);
+  assert.match(grid, /translate:\s*`\$\{move\?\.x \|\| 0\}px \$\{move\?\.y \|\| 0\}px`/);
+  assert.match(grid, /scale:\s*`\$\{startScale\} 1`/);
+  assert.match(grid, /transformOrigin:\s*'left top'/);
+  assert.match(grid, /animatedRect\.width \/ settledRect\.width/);
+  assert.match(grid, /animationsRef\.current\.set\(key, animation\)/);
 });
 
 test('drawer virtualization uses content width and includes the row gap', () => {
@@ -153,4 +162,29 @@ test('archive count stays beside the heading on narrow screens', () => {
   const css = read('src/index.css');
   const narrowSummaryRule = /@media[^}]*[\s\S]*?\.archive-toolbar-summary\s*\{[^}]*flex-direction:\s*column;/;
   assert.doesNotMatch(css, narrowSummaryRule);
+});
+
+test('archive grid batches width revisions and measures only stable layout versions', () => {
+  const grid = read('src/components/ArchiveGrid.jsx');
+  assert.match(grid, /layoutFrameRef/);
+  assert.match(grid, /requestAnimationFrame/);
+  assert.match(grid, /cancelAnimationFrame/);
+  assert.match(grid, /const animationLayoutVersion =/);
+  assert.match(grid, /\}, \[animationLayoutVersion\]\);/);
+  assert.doesNotMatch(grid, /\}, \[packedChildren\]\);/);
+});
+
+test('archive grid animates only cards near the viewport', () => {
+  const grid = read('src/components/ArchiveGrid.jsx');
+  assert.match(grid, /const viewportMinTop =/);
+  assert.match(grid, /const viewportMaxTop =/);
+  assert.match(grid, /if \(!isNearViewport\)/);
+});
+
+test('archive grid skips offscreen card contents without virtualizing cards', () => {
+  const css = read('src/index.css');
+  assert.match(
+    css,
+    /\.archive-grid\s*>\s*\.archive-card-wrap\s*\{[^}]*content-visibility:\s*auto;[^}]*contain-intrinsic-block-size:\s*auto 330px;/s,
+  );
 });

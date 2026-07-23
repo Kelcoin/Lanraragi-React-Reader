@@ -316,3 +316,22 @@ test('border crop is measured from the decoded replacement before it is displaye
   const reader = read('src/pages/Reader.jsx');
   assert.match(reader, /detectImageBorderInsets\(decoded\.image\)/);
 });
+
+test('archive covers wait for one shared near-viewport observer', () => {
+  const card = read('src/components/ArchiveCard.jsx');
+  assert.match(card, /let nearViewportObserver/);
+  assert.match(card, /rootMargin:\s*'1200px 800px'/);
+  assert.match(card, /if \(!thumbnailEligible\) return undefined;/);
+});
+
+test('archive covers use the displayed image as their only decoder', () => {
+  const card = read('src/components/ArchiveCard.jsx');
+  assert.match(card, /loading="lazy"/);
+  assert.match(card, /decoding="async"/);
+  assert.doesNotMatch(card, /function readImageAspectRatio|new Image\(\)/);
+});
+
+test('image cache allows four normal covers beside the reserved critical slot', () => {
+  const cache = read('src/lib/imageCache.js');
+  assert.match(cache, /createImageLoadQueue\(\{ maxConcurrent: 5 \}\)/);
+});

@@ -17,6 +17,7 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
   const widthsRef = useRef(new Map());
   const previousRectsRef = useRef(new Map());
   const animationsRef = useRef(new Map());
+  const layoutFrameRef = useRef(null);
   const [layout, setLayout] = useState({ width: 0, gap: 0, revision: 0 });
 
   const setGridRef = useCallback((node) => {
@@ -29,7 +30,15 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
     if (!key || (widthsRef.current.get(key) ?? ARCHIVE_CARD_WIDTH) === width) return;
     if (width === ARCHIVE_CARD_WIDTH) widthsRef.current.delete(key);
     else widthsRef.current.set(key, width);
-    setLayout((current) => ({ ...current, revision: current.revision + 1 }));
+    if (layoutFrameRef.current != null) return;
+    layoutFrameRef.current = requestAnimationFrame(() => {
+      layoutFrameRef.current = null;
+      setLayout((current) => ({ ...current, revision: current.revision + 1 }));
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (layoutFrameRef.current != null) cancelAnimationFrame(layoutFrameRef.current);
   }, []);
 
   useLayoutEffect(() => {
@@ -59,6 +68,11 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
     }
   }, [children]);
 
+  const childKeySignature = Children.toArray(children)
+    .map((element) => String(element.key))
+    .join('\u001f');
+  const animationLayoutVersion = `${layout.width}:${layout.gap}:${layout.revision}:${childKeySignature}`;
+
   const packedChildren = useMemo(() => {
     const items = Children.toArray(children).map((element) => ({
       element,
@@ -85,16 +99,33 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
 
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const nextRects = new Map();
+    const gridViewportTop = node.getBoundingClientRect().top;
+    const viewportMinTop = -gridViewportTop - window.innerHeight;
+    const viewportMaxTop = -gridViewportTop + window.innerHeight * 2;
 
     for (const element of node.children) {
       const key = element.dataset.archiveGridKey;
       if (!key) continue;
 
-      const nextRect = { left: element.offsetLeft, top: element.offsetTop };
+      const nextRect = {
+        left: element.offsetLeft,
+        top: element.offsetTop,
+        width: element.offsetWidth,
+      };
       const previousRect = previousRectsRef.current.get(key);
       const logicalMove = getArchiveCardMove(previousRect, nextRect);
+      const logicalScale = previousRect?.width && nextRect.width
+        ? previousRect.width / nextRect.width
+        : 1;
+      const hasWidthChange = Math.abs(logicalScale - 1) >= 0.001;
       nextRects.set(key, nextRect);
-      if (!logicalMove) continue;
+      if (!logicalMove && !hasWidthChange) continue;
+
+      const isNearViewport = nextRect.top >= viewportMinTop && nextRect.top <= viewportMaxTop;
+      if (!isNearViewport) {
+        animationsRef.current.get(key)?.cancel();
+        continue;
+      }
 
       const activeAnimation = animationsRef.current.get(key);
       const animatedRect = activeAnimation ? element.getBoundingClientRect() : null;
@@ -104,18 +135,32 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
         x: animatedRect.left - settledRect.left,
         y: animatedRect.top - settledRect.top,
       } : null;
+      const animationScale = activeAnimation && settledRect.width
+        ? animatedRect.width / settledRect.width
+        : null;
+      const startScale = animationScale ?? logicalScale;
       const move = animationOffset
-        ? getArchiveCardMove(previousRect, nextRect, animationOffset)
+        ? (logicalMove
+            ? getArchiveCardMove(previousRect, nextRect, animationOffset)
+            : animationOffset)
         : logicalMove;
 
-      if (!move || reduceMotion || typeof element.animate !== 'function') continue;
+      if (reduceMotion || typeof element.animate !== 'function') continue;
       const animation = element.animate(
         [
-          { translate: `${move.x}px ${move.y}px` },
-          { translate: '0px 0px' },
+          {
+            translate: `${move?.x || 0}px ${move?.y || 0}px`,
+            scale: `${startScale} 1`,
+            transformOrigin: 'left top',
+          },
+          {
+            translate: '0px 0px',
+            scale: '1 1',
+            transformOrigin: 'left top',
+          },
         ],
         {
-          duration: 220,
+          duration: 150,
           easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
         },
       );
@@ -128,7 +173,7 @@ const ArchiveGrid = forwardRef(function ArchiveGrid({ className = '', children, 
     }
 
     previousRectsRef.current = nextRects;
-  }, [packedChildren]);
+  }, [animationLayoutVersion]);
 
   useEffect(() => () => {
     for (const animation of animationsRef.current.values()) animation.cancel();
